@@ -3,6 +3,7 @@ import { html, nothing } from '@umbraco-cms/backoffice/external/lit';
 import { UMB_AUTH_CONTEXT } from '@umbraco-cms/backoffice/auth';
 import { API_BASE, PAGE_SIZE, isMedia, isImage, isVideo, isAudio, isPdf, formatSize, getIcon, getEditorLanguage } from './helpers.js';
 import { dashboardStyles } from './styles.js';
+import { UmbCodeEditorElement } from '@umbraco-cms/backoffice/code-editor';
 
 export class UtproFileManagerDashboard extends UmbLitElement {
     static properties = {
@@ -76,8 +77,9 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         catch { this.isAdmin = false; }
     }
 
-    #confirmDiscard() { 
-        return !this.isDirty || confirm('You have unsaved changes. Discard and continue?'); }
+    #confirmDiscard() {
+        return !this.isDirty || confirm('You have unsaved changes. Discard and continue?');
+    }
     showError(msg) { this.errorMessage = msg; setTimeout(() => { this.errorMessage = ''; }, 5000); }
 
     #syncUrl() {
@@ -233,8 +235,10 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     // ── Selection ────────────────────────────────────────
 
     #toggleSelect(path) { const s = new Set(this.selectedPaths); s.has(path) ? s.delete(path) : s.add(path); this.selectedPaths = s; }
-    #toggleSelectAll() { this.selectedPaths = this.selectedPaths.size === this.i
-tems.length ? new Set() : new Set(this.items.map(i => i.path)); }
+    #toggleSelectAll() {
+        this.selectedPaths = this.selectedPaths.size === this.i
+        tems.length ? new Set() : new Set(this.items.map(i => i.path));
+    }
     async #bulkAction(action) {
         const paths = [...this.selectedPaths];
         if (action === 'delete') { if (!confirm(`Delete ${paths.length} selected item(s)?`)) return; }
@@ -317,7 +321,7 @@ tems.length ? new Set() : new Set(this.items.map(i => i.path)); }
         const lang = getEditorLanguage(this.editingFile.extension);
         return html`<umb-code-editor .code=${this.editContent} language=${lang}
             style="--editor-height: calc(100dvh - 260px)"
-            @input=${(e) => { this.editContent = e.target.code || ''; this.isDirty = this.editContent !== this.#originalContent; }}
+            .value=${(e) => { this.editContent = e.target.code || ''; this.isDirty = this.editContent !== this.#originalContent; }}
         ></umb-code-editor>`;
     }
 
