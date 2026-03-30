@@ -98,13 +98,15 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             this.items = append ? [...this.items, ...data.items] : (data.items || []);
         } catch (e) { this.showError(e.message); }
         this.isLoading = false; this.isLoadingMore = false;
-        await this.updateComplete;
-        const pb = this.shadowRoot?.querySelector('.path-bar');
-        if (pb) pb.scrollLeft = pb.scrollWidth;
+        this.#scrollPathBar();
         this.#syncUrl();
     }
     async loadMore() { if (this.currentPage < this.totalPages) await this.browse(this.currentPath, this.currentPage + 1, true); }
     #handleSearch(e) { clearTimeout(this.#searchTimeout); const v = e.target.value; this.#searchTimeout = setTimeout(() => { this.searchQuery = v; this.browse(this.currentPath); }, 300); }
+    async #scrollPathBar() {
+        await this.updateComplete;
+        setTimeout(() => { const pb = this.shadowRoot?.querySelector('.path-bar'); if (pb) pb.scrollLeft = pb.scrollWidth; }, 50);
+    }
     goBack() { if (this.currentPath) { const parts = this.currentPath.split('/'); parts.pop(); this.browse(parts.join('/')); } }
     get #canGoBack() { return this.currentPath !== ''; }
 
@@ -132,6 +134,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         } catch (e) { this.showError(e.message); }
         this.isLoading = false;
         this.#syncUrl();
+        this.#scrollPathBar();
     }
     async #openPreview(item) {
         this.editingFile = null; this.activeFile = null;
@@ -142,6 +145,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         this.previewFile = { ...item, url: URL.createObjectURL(blob), type: blob.type, ext: item.extension };
         this.activeFile = item;
         this.#syncUrl();
+        this.#scrollPathBar();
     }
     closeFile() {
         if (this.editingFile && !this.#confirmDiscard()) return;
@@ -244,19 +248,33 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         const pf = this.previewFile;
         return html`
             <div class="file-view-bar">
+                <div class="file-view-actions">
+                    ${isEdit ? html`<uui-button look="outline" compact @click=${() => this.saveFile()} title="Save">\u{1F4BE} Save</uui-button>` : nothing}
+                    ${!isEdit ? html`
+                        <div class="new-menu-wrap">
+                            <uui-button look="outline" compact @click=${() => { this._showActionsMenu = !this._showActionsMenu; this.requestUpdate(); }}>Actions \u25BE</uui-button>
+                            ${this._showActionsMenu ? html`<div class="new-menu">
+                                <div class="new-menu-item" @click=${() => { this._showActionsMenu = false; this.downloadFile(af); }}>\u2B07\uFE0F Download</div>
+                                ${this.isAdmin ? html`
+                                    <div class="new-menu-item" @click=${() => { this._showActionsMenu = false; this.#renameActiveFile(); }}>\u270F\uFE0F Rename</div>
+                                    <div class="new-menu-sep"></div>
+                                    <div class="new-menu-item new-menu-danger" @click=${() => { this._showActionsMenu = false; this.#deleteActiveFile(); }}>\u{1F5D1}\uFE0F Delete</div>
+                                ` : nothing}
+                            </div>` : nothing}
+                        </div>
+                    ` : html`
+                        <uui-button look="outline" compact @click=${() => this.downloadFile(af)} title="Download">\u2B07\uFE0F</uui-button>
+                        ${this.isAdmin ? html`
+                            <uui-button look="outline" compact @click=${() => this.#renameActiveFile()} title="Rename">\u270F\uFE0F</uui-button>
+                            <uui-button look="outline" compact color="danger" @click=${() => this.#deleteActiveFile()} title="Delete">\u{1F5D1}\uFE0F</uui-button>
+                        ` : nothing}
+                    `}
+                </div>
                 <div class="file-view-info">
-                    <span class="editor-ext">${af?.extension || ''}</span>
+                    ${isEdit && this.isDirty ? html`<span class="dirty-badge">\u25CF Unsaved</span>` : nothing}
                     ${af?.size ? html`<span class="file-meta">${formatSize(af.size)}</span>` : nothing}
                     ${af?.lastModified ? html`<span class="file-meta">${new Date(af.lastModified).toLocaleString()}</span>` : nothing}
-                    ${isEdit && this.isDirty ? html`<span class="dirty-badge">\u25CF Unsaved</span>` : nothing}
-                </div>
-                <div class="file-view-actions">
-                    ${isEdit ? html`<uui-button look="primary" compact @click=${() => this.saveFile()} title="Save">Save</uui-button>` : nothing}
-                    <uui-button look="outline" compact @click=${() => this.downloadFile(af)} title="Download">\u2B07\uFE0F</uui-button>
-                    ${this.isAdmin ? html`
-                        <uui-button look="outline" compact @click=${() => this.#renameActiveFile()} title="Rename">\u270F\uFE0F</uui-button>
-                        <uui-button look="outline" compact color="danger" @click=${() => this.#deleteActiveFile()} title="Delete">\u{1F5D1}\uFE0F</uui-button>
-                    ` : nothing}
+                    <span class="editor-ext">${af?.extension || ''}</span>
                 </div>
             </div>
             ${isEdit ? this._renderEditorContent() : this._renderPreviewContent(pf)}`;
@@ -288,20 +306,21 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             <div class="action-bar">
                 <div class="toolbar">
                     ${this.isAdmin ? html`
-                        <uui-button look="outline" @click=${() => this.shadowRoot.querySelector('#fileUpload').click()}>\u{1F4E4} Upload</uui-button>
                         <div class="new-menu-wrap">
                             <uui-button look="outline" @click=${() => { this.showNewMenu = !this.showNewMenu; }}>\u2795 New \u25BE</uui-button>
                             ${this.showNewMenu ? html`<div class="new-menu">
+                                <div class="new-menu-item" @click=${() => { this.showNewMenu = false; this.shadowRoot.querySelector('#fileUpload').click(); }}>\u{1F4E4} Upload File</div>
+                                <div class="new-menu-sep"></div>
                                 <div class="new-menu-item" @click=${() => this.createFolder()}>\u{1F4C1} New Folder</div>
                                 <div class="new-menu-item" @click=${() => this.createFile()}>\u{1F4C4} New File</div>
                                 <div class="new-menu-sep"></div>
                                 <div class="new-menu-item" @click=${() => this.importFromUrl()}>\u{1F310} Import file via URL</div>
                             </div>` : nothing}
                         </div>
+                        <input type="file" id="fileUpload" multiple style="display:none" @change=${(e) => { if (e.target.files.length) { const f = Array.from(e.target.files); e.target.value = ''; this.uploadFiles(f); } }}>
                     ` : nothing}
                     ${this.isAdmin && this.selectedPaths.size ? html`<uui-button look="primary" color="danger" @click=${() => this.#deleteSelected()}>\u{1F5D1}\uFE0F Delete (${this.selectedPaths.size})</uui-button>` : nothing}
                     ${this.isAdmin && this.#hasSelectedZips ? html`<uui-button look="primary" @click=${() => this.#extractSelected()}>\u{1F4E6} Extract Zip</uui-button>` : nothing}
-                    ${this.isAdmin ? html`<input type="file" id="fileUpload" multiple style="display:none" @change=${(e) => { if (e.target.files.length) { const f = Array.from(e.target.files); e.target.value = ''; this.uploadFiles(f); } }}>` : nothing}
                 </div>
                 ${this.totalItems ? html`<div class="file-status">Showing ${this.items.length} of ${this.totalItems} items</div>` : nothing}
             </div>`;
