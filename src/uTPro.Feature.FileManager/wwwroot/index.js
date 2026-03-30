@@ -76,8 +76,8 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         catch { this.isAdmin = false; }
     }
 
-    #confirmDiscard() { return !this.isDirty || confirm('You 
-have unsaved changes. Discard and continue?'); }
+    #confirmDiscard() { 
+        return !this.isDirty || confirm('You have unsaved changes. Discard and continue?'); }
     showError(msg) { this.errorMessage = msg; setTimeout(() => { this.errorMessage = ''; }, 5000); }
 
     #syncUrl() {
