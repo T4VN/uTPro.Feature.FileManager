@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <PackageId>uTPro.Feature.FileManager</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>T4VN</Authors>
+    <Company>T4VN</Company>
+    <Description>File Manager dashboard for Umbraco 16+ backoffice. Browse, upload, download, edit, rename, and delete files directly from the backoffice.</Description>
+    <PackageTags>umbraco;umbraco-marketplace;file-manager;backoffice;dashboard</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/T4VN/uTPro.Feature.FileManager</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/T4VN/uTPro.Feature.FileManager</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <StaticWebAssetBasePath>App_Plugins/utpro-file-manager</StaticWebAssetBasePath>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageOutputPath>..\..\Build</PackageOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Umbraco.Cms.Api.Management" Version="16.5.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="/" />
+    <None Include="..\..\icon.png" Pack="true" PackagePath="/" />
+    <None Include="..\..\umbraco-marketplace.json" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>
