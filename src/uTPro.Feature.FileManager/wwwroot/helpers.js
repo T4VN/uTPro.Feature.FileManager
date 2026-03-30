@@ -1,3 +1,4 @@
+import { html } from '@umbraco-cms/backoffice/external/lit';
 export const API_BASE = '/umbraco/management/api/v1/utpro/file-manager';
 export const PAGE_SIZE = 100;
 
@@ -20,26 +21,29 @@ export function formatSize(bytes) {
 }
 
 const ICON_MAP = {
-    folder: '\u{1F4C1}',
-    image: '\u{1F5BC}\uFE0F',
-    script: '\u{1F4DC}',
-    style: '\u{1F3A8}',
-    markup: '\u{1F4C4}',
-    config: '\u2699\uFE0F',
-    csharp: '\u{1F537}',
-    default: '\u{1F4CE}',
+    folder: 'icon-folder',
+    image: 'icon-picture',
+    script: 'icon-script',
+    style: 'icon-brush',
+    markup: 'icon-code',
+    config: 'icon-document-html',
+    zip: 'icon-zip',
+    default: 'icon-document',
 };
 
 export function getIcon(item) {
-    if (item.type === 'folder') return ICON_MAP.folder;
-    const e = item.extension;
-    if (IMAGE_EXT.includes(e)) return ICON_MAP.image;
-    if (['.js', '.ts', '.mjs', '.jsx', '.tsx'].includes(e)) return ICON_MAP.script;
-    if (['.css', '.scss', '.less'].includes(e)) return ICON_MAP.style;
-    if (['.cshtml', '.razor', '.html', '.htm'].includes(e)) return ICON_MAP.markup;
-    if (['.json', '.xml', '.yaml', '.yml', '.config'].includes(e)) return ICON_MAP.config;
-    if (e === '.cs') return ICON_MAP.csharp;
-    return ICON_MAP.default;
+    let name = ICON_MAP.default;
+    if (item.type === 'folder') name = ICON_MAP.folder;
+    else {
+        const e = item.extension;
+        if (IMAGE_EXT.includes(e)) name = ICON_MAP.image;
+        else if (['.js', '.ts', '.mjs', '.jsx', '.tsx'].includes(e)) name = ICON_MAP.script;
+        else if (['.css', '.scss', '.less'].includes(e)) name = ICON_MAP.style;
+        else if (['.cshtml', '.razor', '.html', '.htm'].includes(e)) name = ICON_MAP.markup;
+        else if (['.json', '.xml', '.yaml', '.yml', '.config'].includes(e)) name = ICON_MAP.config;
+        else if (e === '.zip') name = ICON_MAP.zip;
+    }
+    return html`<uui-icon name=${name}></uui-icon>`;
 }
 
 const LANG_MAP = {
