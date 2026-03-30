@@ -250,25 +250,17 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             <div class="file-view-bar">
                 <div class="file-view-actions">
                     ${isEdit ? html`<uui-button look="outline" compact @click=${() => this.saveFile()} title="Save">\u{1F4BE} Save</uui-button>` : nothing}
-                    ${!isEdit ? html`
-                        <div class="new-menu-wrap">
-                            <uui-button look="outline" compact @click=${() => { this._showActionsMenu = !this._showActionsMenu; this.requestUpdate(); }}>Actions \u25BE</uui-button>
-                            ${this._showActionsMenu ? html`<div class="new-menu">
-                                <div class="new-menu-item" @click=${() => { this._showActionsMenu = false; this.downloadFile(af); }}>\u2B07\uFE0F Download</div>
-                                ${this.isAdmin ? html`
-                                    <div class="new-menu-item" @click=${() => { this._showActionsMenu = false; this.#renameActiveFile(); }}>\u270F\uFE0F Rename</div>
-                                    <div class="new-menu-sep"></div>
-                                    <div class="new-menu-item new-menu-danger" @click=${() => { this._showActionsMenu = false; this.#deleteActiveFile(); }}>\u{1F5D1}\uFE0F Delete</div>
-                                ` : nothing}
-                            </div>` : nothing}
-                        </div>
-                    ` : html`
-                        <uui-button look="outline" compact @click=${() => this.downloadFile(af)} title="Download">\u2B07\uFE0F</uui-button>
-                        ${this.isAdmin ? html`
-                            <uui-button look="outline" compact @click=${() => this.#renameActiveFile()} title="Rename">\u270F\uFE0F</uui-button>
-                            <uui-button look="outline" compact color="danger" @click=${() => this.#deleteActiveFile()} title="Delete">\u{1F5D1}\uFE0F</uui-button>
-                        ` : nothing}
-                    `}
+                    <div class="new-menu-wrap">
+                        <uui-button look="outline" compact @click=${() => { this._showActionsMenu = !this._showActionsMenu; this.requestUpdate(); }}>Actions \u25BE</uui-button>
+                        ${this._showActionsMenu ? html`<div class="new-menu">
+                            <div class="new-menu-item" @click=${() => { this._showActionsMenu = false; this.downloadFile(af); }}>\u2B07\uFE0F Download</div>
+                            ${this.isAdmin ? html`
+                                <div class="new-menu-item" @click=${() => { this._showActionsMenu = false; this.#renameActiveFile(); }}>\u270F\uFE0F Rename</div>
+                                <div class="new-menu-sep"></div>
+                                <div class="new-menu-item new-menu-danger" @click=${() => { this._showActionsMenu = false; this.#deleteActiveFile(); }}>\u{1F5D1}\uFE0F Delete</div>
+                            ` : nothing}
+                        </div>` : nothing}
+                    </div>
                 </div>
                 <div class="file-view-info">
                     ${isEdit && this.isDirty ? html`<span class="dirty-badge">\u25CF Unsaved</span>` : nothing}
