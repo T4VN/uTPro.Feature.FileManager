@@ -47,9 +47,10 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 
 ### Security & Permissions
 - **Settings section access** required to view the dashboard
-- **Admin** — full access: browse entire server root, create, edit, rename, delete, upload, extract
-- **Sensitive Data group** — read-only access to all files and folders
-- **Media group** — read-only access limited to `wwwroot/` with media files only
+- **Admin** — full access: browse entire server root (ContentRootPath), create, edit, rename, delete, upload, extract
+- **Settings (non-admin)** — browse `wwwroot/` tree only (view folder structure, check if files exist — no file actions)
+- **Settings + Sensitive Data** — browse `wwwroot/` + view/edit/download file content
+- **Write operations** (create, rename, delete, upload, extract ZIP, import URL) — Admin only
 - Non-admin users are jailed to `wwwroot/` — cannot access `appsettings.json`, `web.config`, or any files outside `wwwroot`
 - Protected files: `web.config`, `appsettings.json`, `appsettings.development.json` cannot be modified or deleted
 - Path traversal protection on all endpoints

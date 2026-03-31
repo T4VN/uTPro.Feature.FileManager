@@ -73,8 +73,12 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     }
 
     async #loadPermissions() {
-        try { this.isAdmin = (await this.api('permissions', {}, 'GET')).isAdmin; }
-        catch { this.isAdmin = false; }
+        try {
+            const d = await this.api('permissions', {}, 'GET');
+            this.isAdmin = d.isAdmin;
+            this.hasSensitiveData = d.hasSensitiveData;
+        }
+        catch { this.isAdmin = false; this.hasSensitiveData = false; }
     }
 
     #confirmDiscard() {
@@ -124,6 +128,8 @@ export class UtproFileManagerDashboard extends UmbLitElement {
 
     async openItem(item) {
         if (item.type === 'folder') return this.browse(item.path);
+        // File actions require Admin or SensitiveData
+        if (!this.isAdmin && !this.hasSensitiveData) return;
         if (item.isEditable) { if (!this.#confirmDiscard()) return; return this.#openEdit(item); }
         if (isMedia(item.extension)) return this.#openPreview(item);
     }
@@ -401,14 +407,15 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     }
 
     _renderRow(item) {
-        const clickable = item.type === 'folder' || item.isEditable || isMedia(item.extension);
+        const canOpen = this.isAdmin || this.hasSensitiveData;
+        const clickable = item.type === 'folder' || (canOpen && (item.isEditable || isMedia(item.extension)));
         return html`<uui-table-row class="${this.selectedPaths.has(item.path) ? 'selected' : ''}">
             ${this.isAdmin ? html`<uui-table-cell class="check-cell"><input type="checkbox" .checked=${this.selectedPaths.has(item.path)} @change=${() => this.#toggleSelect(item.path)}></uui-table-cell>` : nothing}
             <uui-table-cell><span class="file-name ${clickable ? 'clickable' : ''}" @click=${() => this.openItem(item)}>${getIcon(item)} ${item.name}</span></uui-table-cell>
             <uui-table-cell class="size-cell">${formatSize(item.size)}</uui-table-cell>
             <uui-table-cell class="date-cell">${new Date(item.lastModified).toLocaleString()}</uui-table-cell>
             <uui-table-cell class="actions-cell">
-                ${item.type === 'file' ? html`<uui-button look="outline" compact @click=${() => this.downloadFile(item)} title="Download"><uui-icon name="icon-download-alt"></uui-icon></uui-button>` : nothing}
+                ${item.type === 'file' && canOpen ? html`<uui-button look="outline" compact @click=${() => this.downloadFile(item)} title="Download"><uui-icon name="icon-download-alt"></uui-icon></uui-button>` : nothing}
                 ${this.isAdmin ? html`<uui-button look="outline" compact @click=${() => this.renameItem(item)} title="Rename"><uui-icon name="icon-edit"></uui-icon></uui-button>
                 <uui-button look="outline" compact @click=${() => this.deleteItem(item)} color="danger" title="Delete"><uui-icon name="icon-trash"></uui-icon></uui-button>` : nothing}
             </uui-table-cell>

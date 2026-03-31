@@ -1,7 +1,7 @@
 {
   "id": "utpro-file-manager",
   "name": "uTPro File Manager",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "extensions": [
     {
       "type": "dashboard",

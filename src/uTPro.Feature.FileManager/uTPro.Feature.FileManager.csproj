@@ -6,15 +6,16 @@
     <Nullable>enable</Nullable>
 
     <PackageId>uTPro.Feature.FileManager</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Authors>T4VN</Authors>
     <Company>T4VN</Company>
-    <Description>File Manager dashboard for Umbraco 16+ backoffice. Browse, upload, download, edit, rename, and delete files directly from the backoffice.</Description>
-    <PackageTags>umbraco;umbraco-marketplace;file-manager;backoffice;dashboard</PackageTags>
+    <Description>A powerful file management dashboard for Umbraco 16+ backoffice. Browse, upload, download, edit with Monaco code editor, preview media, rename, delete, extract ZIP, and import files via URL. Role-based access control and zero configuration.</Description>
+    <PackageTags>umbraco;umbraco-marketplace;file-manager;backoffice;dashboard;code-editor;media-preview;upload;download</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/T4VN/uTPro.Feature.FileManager</PackageProjectUrl>
     <RepositoryUrl>https://github.com/T4VN/uTPro.Feature.FileManager</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
 
     <StaticWebAssetBasePath>App_Plugins/utpro-file-manager</StaticWebAssetBasePath>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
