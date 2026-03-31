@@ -147,7 +147,13 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     async #openPreview(item) {
         this.editingFile = null; this.activeFile = null;
         const res = await this.#fetchAuth(`${API_BASE}/download?path=${encodeURIComponent(item.path)}&inline=true`);
-        if (!res.ok) return this.showError('Preview failed');
+        if (!res.ok) {
+            const json = await res.json();
+            if (json) {
+                return this.showError(json.error);
+            }
+            return this.showError('Preview failed');
+        }
         const blob = await res.blob();
         this.previewFile = { ...item, url: URL.createObjectURL(blob), type: blob.type, ext: item.extension };
         this.activeFile = item; this.#syncUrl(); this.#scrollPathBar();
@@ -290,9 +296,10 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             <div class="nav-buttons">
                 <button class="nav-btn ${this.#canGoBack || af ? '' : 'disabled'}" @click=${() => af ? this.closeFile() : this.goBack()} title="Back"><uui-icon name="icon-arrow-left"></uui-icon></button>
                 <button class="nav-btn" @click=${() => window.location.reload()} title="Reload"><uui-icon name="icon-refresh"></uui-icon></button>
+                <button class="nav-btn" @click=${() => { this.closeFile(); this.browse(''); }} title="Root"><uui-icon name="icon-home"></uui-icon></button>
             </div>
             <div class="path-bar">
-                <span class="path-crumb" @click=${() => { this.closeFile(); this.browse(''); }}><uui-icon name="icon-home"></uui-icon></span>
+                <span class="path-crumb" @click=${() => { this.closeFile(); this.browse(''); }}>root</span>
                 ${parts.map((part, i) => { const p = parts.slice(0, i + 1).join('/'); return html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb" @click=${() => { this.closeFile(); this.browse(p); }}>${part}</span>`; })}
                 ${af ? html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb path-active">${af.name}</span>` : nothing}
             </div>

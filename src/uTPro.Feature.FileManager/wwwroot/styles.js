@@ -20,7 +20,7 @@ export const dashboardStyles = css`
     .search-input:focus { outline: none; border-color: var(--uui-color-interactive, #1b264f); }
 
     /* Action bar */
-    .action-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap; }
+    .action-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid var(--uui-color-border, #eee); }
     .toolbar { display: flex; gap: 8px; align-items: center; }
     .file-status { font-size: .8rem; color: #888; white-space: nowrap; }
     .new-menu-wrap { position: relative; }
