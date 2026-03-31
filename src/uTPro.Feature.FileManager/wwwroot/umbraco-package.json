@@ -1,0 +1,21 @@
+{
+  "id": "utpro-file-manager",
+  "name": "uTPro File Manager",
+  "version": "1.0.0",
+  "extensions": [
+    {
+      "type": "dashboard",
+      "alias": "utpro.fileManager.dashboard",
+      "name": "File Manager",
+      "element": "/App_Plugins/utpro-file-manager/index.js",
+      "weight": 100,
+      "meta": {
+        "label": "File Manager",
+        "pathname": "file-manager"
+      },
+      "conditions": [
+        { "alias": "Umb.Condition.SectionAlias", "match": "Umb.Section.Settings" }
+      ]
+    }
+  ]
+}

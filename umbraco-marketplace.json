@@ -1,0 +1,62 @@
+{
+  "$schema": "https://marketplace.umbraco.com/umbraco-marketplace-schema.json",
+  "Category": "Developer Tools",
+  "Title": "uTPro File Manager",
+  "Description": "A powerful file management dashboard for Umbraco 16+ backoffice. Browse, upload, download, edit (with Monaco code editor), preview media, rename, delete, extract ZIP, and import files via URL. Features Windows Explorer-style navigation, role-based access control (Admin/Sensitive Data/Media), pagination for large directories, and URL state persistence. Zero configuration required.",
+  "AuthorDetails": {
+    "Name": "T4VN",
+    "Url": "https://t4vn.com",
+    "ImageUrl": "https://github.com/t4vn.png",
+    "SyncContributorsFromRepository": true
+  },
+  "PackagesByAuthor": [
+    "uTPro.Feature.AuditLog"
+  ],
+  "Screenshots": [
+    {
+      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Admin%20-%20Screenshot%202026-03-31%20122558.png?raw=true",
+      "Caption": "Admin view — full access to browse, edit, upload, and manage all server files"
+    },
+    {
+      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Edit%20File%20and%20Action%20File%20-%20Screenshot%202026-03-31%20122905.png?raw=true",
+      "Caption": "Code editor with syntax highlighting (Monaco) and file actions menu"
+    },
+    {
+      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Extract%20ZIP%20-%20Screenshot%202026-03-31%20122558.png?raw=true",
+      "Caption": "Select and extract ZIP files directly in the backoffice"
+    },
+    {
+      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Load%20more%20-%20Screenshot%202026-03-31%20122734.png?raw=true",
+      "Caption": "Paginated loading — handles 2000+ files without UI lag"
+    },
+    {
+      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/New%20File%20or%20Import%20Url%20-%20Screenshot%202026-03-31%20122823.png?raw=true",
+      "Caption": "Create new files, folders, or import from URL"
+    },
+    {
+      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/User%20Not%20Sensitive%20data%20-%20Screenshot%202026-03-31%20123133.png?raw=true",
+      "Caption": "Non-admin users are restricted to wwwroot only"
+    },
+    {
+      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/User%20Sensitive%20data%20Edit%20file%20-%20Screenshot%202026-03-31%20123133.png?raw=true",
+      "Caption": "Sensitive Data role — read-only access to edit and view all files"
+    }
+  ],
+  "LicenseTypes": [
+    "Free"
+  ],
+  "Tags": [
+    "file-manager",
+    "backoffice",
+    "dashboard",
+    "code-editor",
+    "media-preview",
+    "upload",
+    "download",
+    "zip-extract"
+  ],
+  "LookingForContributors": true,
+  "PackageType": "Package",
+  "DocumentationUrl": "https://github.com/T4VN/uTPro.Feature.FileManager",
+  "IssueTrackerUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/issues"
+}
