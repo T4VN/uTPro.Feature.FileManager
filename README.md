@@ -77,7 +77,7 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 ## Screenshots
 
 ### uTPro.Feature.FileManager - v2.0.0
-![uTPro.Feature.FileManager v2.0.0](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Screenshots/Screenshot-UI2.0.0.png)
+![uTPro.Feature.FileManager v2.0.0](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Screenshot-UI2.0.0.png)
 
 ### Admin view — full access to browse, edit, upload, and manage all server files
 ![Admin view](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Admin%20-%20Screenshot%202026-03-31%20122558.png?raw=true)
