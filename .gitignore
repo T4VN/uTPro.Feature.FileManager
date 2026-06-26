@@ -16,3 +16,9 @@ Build/
 *.sqlite.db-wal
 .DS_Store
 Thumbs.db
+
+## Dot-prefixed folders (except .github which holds repo actions)
+.*/
+**/.*/
+!.github/
+!**/.github/
