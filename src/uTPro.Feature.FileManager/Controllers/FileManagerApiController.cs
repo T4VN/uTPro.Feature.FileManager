@@ -183,10 +183,13 @@ public class FileManagerApiController(
             var fullDir = fileManager.GetFullPath(safePath);
             if (!Directory.Exists(fullDir))
                 return BadRequest(new { error = "Directory not found." });
-            var filePath = Path.Combine(fullDir, file.FileName);
+            var safeFileName = Path.GetFileName(file.FileName);
+            if (string.IsNullOrWhiteSpace(safeFileName))
+                return BadRequest(new { error = "Invalid file name." });
+            var filePath = Path.Combine(fullDir, safeFileName);
             await using var stream = new FileStream(filePath, FileMode.Create);
             await file.CopyToAsync(stream);
-            return Ok(new { success = true, name = file.FileName });
+            return Ok(new { success = true, name = safeFileName });
         }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }

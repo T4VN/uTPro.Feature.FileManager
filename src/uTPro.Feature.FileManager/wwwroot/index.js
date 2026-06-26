@@ -4,6 +4,7 @@ import { html, nothing } from '@umbraco-cms/backoffice/external/lit';
 import { UMB_AUTH_CONTEXT } from '@umbraco-cms/backoffice/auth';
 import { API_BASE, PAGE_SIZE, isMedia, isImage, isVideo, isAudio, isPdf, formatSize, getIcon, getEditorLanguage } from './helpers.js';
 import { dashboardStyles } from './styles.js';
+import { UTPRO_FILEMANAGER_CONTEXT } from './context.js';
 
 export class UtproFileManagerDashboard extends UmbLitElement {
     static properties = {
@@ -19,7 +20,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     };
     static styles = dashboardStyles;
 
-    #authContext; #originalContent = ''; #searchTimeout = null;
+    #authContext; #fmContext = null; #originalContent = ''; #searchTimeout = null;
     #beforeUnloadHandler = (e) => { if (this.isDirty) { e.preventDefault(); e.returnValue = ''; } };
 
     constructor() {
@@ -35,6 +36,10 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             showNewMenu: false, activeFile: null, showActionsMenu: false,
         });
         this.consumeContext(UMB_AUTH_CONTEXT, (ctx) => { this.#authContext = ctx; });
+        this.consumeContext(UTPRO_FILEMANAGER_CONTEXT, (ctx) => {
+            this.#fmContext = ctx;
+            if (ctx) { ctx.setActiveView(this); this.#publishFooter(); }
+        });
     }
 
     async connectedCallback() {
@@ -49,7 +54,38 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         for (let i = 2; i <= pages; i++) await this.browse(initialPath, i, true);
         if (file) await this.#openFilePath(file);
     }
-    disconnectedCallback() { super.disconnectedCallback(); window.removeEventListener('beforeunload', this.#beforeUnloadHandler); }
+    disconnectedCallback() { super.disconnectedCallback(); window.removeEventListener('beforeunload', this.#beforeUnloadHandler); this.#fmContext?.clearActiveView(this); }
+
+    updated() { this.#publishFooter(); }
+
+    // ── Footer app bridge ────────────────────────────────
+    // The New/bulk-action cluster and item count live in the workspace footer
+    // (footer.js). We publish state here and expose action hooks it can call.
+
+    #publishFooter() {
+        const af = this.activeFile;
+        this.#fmContext?.setFooterState({
+            isAdmin: !!this.isAdmin,
+            viewing: !!(this.editingFile || this.previewFile),
+            isEdit: !!this.editingFile,
+            isDirty: !!this.isDirty,
+            itemsLength: this.items.length,
+            totalItems: this.totalItems,
+            selectedCount: this.selectedPaths.size,
+            hasSelectedZips: this.#hasSelectedZips,
+            activeSize: af?.size || 0,
+            activeExt: af?.extension || '',
+        });
+    }
+
+    fmCreate(type) { this.#promptCreate(type); }
+    fmImportUrl() { this.#importFromUrl(); }
+    fmTriggerUpload() { this.shadowRoot?.querySelector('#fileUpload')?.click(); }
+    fmBulkAction(action) { this.#bulkAction(action); }
+    fmSave() { this.saveFile(); }
+    fmDownloadActive() { if (this.activeFile) this.downloadFile(this.activeFile); }
+    fmRenameActive() { if (this.activeFile) this.renameItem(this.activeFile, true); }
+    fmDeleteActive() { if (this.activeFile) this.deleteItem(this.activeFile, true); }
 
     // ── API & helpers ────────────────────────────────────
 
@@ -279,20 +315,19 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     render() {
         const viewing = this.editingFile || this.previewFile;
         const isEdit = !!this.editingFile;
-        return html`<uui-box>
-            <div style="position:sticky;top:0;z-index:999; background: #fff">
+        return html`<div class="fm-root">
+            <div style="position:sticky; top:0; z-index:999; background: var(--uui-color-surface, #fff); margin:-12px -16px 0; padding:0 16px;">
                 ${this.isAdmin ? this._renderDropZone() : nothing}
                 ${this._renderNavBar()}
-                ${viewing ? this._renderFileView() : this._renderActionBar()}
                 ${this.isAdmin ? this._renderDropZone() : nothing}
             </div>
             ${isEdit ? this._renderEditorContent() : this._renderPreviewContent()}
             ${!viewing ? html`
                 ${this.errorMessage ? html`<div class="error">${this.errorMessage}</div>` : nothing}
                 ${this.isLoading ? html`<div class="center"><uui-loader></uui-loader></div>` : this._renderFileList()}
-                
             `: nothing}
-        </uui-box>`;
+            ${this.isAdmin ? html`<input type="file" id="fileUpload" multiple style="display:none" @change=${(e) => { if (e.target.files.length) { const f = Array.from(e.target.files); e.target.value = ''; this.uploadFiles(f); } }}>` : nothing}
+        </div>`;
     }
 
     _renderNavBar() {
@@ -311,34 +346,6 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             </div>
             ${!af ? html`<input type="text" class="search-input" placeholder="Search..." .value=${this.searchQuery} @input=${(e) => this.#handleSearch(e)}>` : html`<span class="file-meta" style="width:180px;text-align:right">${new Date(af.lastModified).toLocaleString()}</span>`}
         </div>`;
-    }
-
-    _renderFileView() {
-        const af = this.activeFile;
-        const isEdit = !!this.editingFile;
-        return html`
-            <div class="file-view-bar">
-                <div class="file-view-actions">
-                    ${isEdit ? html`<uui-button look="outline" compact @click=${() => this.saveFile()} title="Save"><uui-icon name="icon-save"></uui-icon> Save</uui-button>` : nothing}
-                    <div class="new-menu-wrap">
-                        <uui-button look="outline" compact @click=${() => { this.showActionsMenu = !this.showActionsMenu; }}><uui-icon name="icon-list"></uui-icon> Actions <uui-symbol-expand open></uui-symbol-expand></uui-button>
-                        ${this.showActionsMenu ? html`<div class="new-menu">
-                            <div class="new-menu-item" @click=${() => { this.showActionsMenu = false; this.downloadFile(af); }}><uui-icon name="icon-download-alt"></uui-icon> Download</div>
-                            ${this.isAdmin ? html`
-                                <div class="new-menu-item" @click=${() => { this.showActionsMenu = false; this.renameItem(af, true); }}><uui-icon name="icon-edit"></uui-icon> Rename</div>
-                                <div class="new-menu-sep"></div>
-                                <div class="new-menu-item new-menu-danger" @click=${() => { this.showActionsMenu = false; this.deleteItem(af, true); }}><uui-icon name="icon-trash"></uui-icon> Delete</div>
-                            ` : nothing}
-                        </div>` : nothing}
-                    </div>
-                    ${isEdit && this.isDirty ? html`<span class="dirty-badge"><uui-icon name="icon-lightbulb-active"></uui-icon> Unsaved</span>` : nothing}
-                </div>
-                <div class="file-view-info">
-                    ${af?.size ? html`<span class="file-meta">${formatSize(af.size)}</span>` : nothing}
-                    <span class="editor-ext">${af?.extension || ''}</span>
-                </div>
-            </div>
-        `;
     }
 
     _renderEditorContent() {
@@ -360,30 +367,6 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         if (isAudio(f.ext)) return html`<div class="preview-inline"><audio controls autoplay style="width:100%"><source src=${f.url} type=${f.type}></audio></div>`;
         if (isPdf(f.ext)) return html`<div class="preview-inline"><iframe class="preview-pdf" src=${f.url}></iframe></div>`;
         return html`<div class="preview-inline"><p>Cannot preview this file type.</p></div>`;
-    }
-
-    _renderActionBar() {
-        return html`<div class="action-bar">
-            <div class="toolbar">
-                ${this.isAdmin ? html`
-                    <div class="new-menu-wrap">
-                        <uui-button look="outline" @click=${() => { this.showNewMenu = !this.showNewMenu; }}><uui-icon name="icon-add"></uui-icon> New <uui-symbol-expand open></uui-symbol-expand></uui-button>
-                        ${this.showNewMenu ? html`<div class="new-menu">
-                            <div class="new-menu-item" @click=${() => { this.showNewMenu = false; this.shadowRoot.querySelector('#fileUpload').click(); }}><uui-icon name="icon-cloud-upload"></uui-icon> Upload File</div>
-                            <div class="new-menu-sep"></div>
-                            <div class="new-menu-item" @click=${() => this.#promptCreate('folder')}><uui-icon name="icon-folder"></uui-icon> New Folder</div>
-                            <div class="new-menu-item" @click=${() => this.#promptCreate('file')}><uui-icon name="icon-document"></uui-icon> New File</div>
-                            <div class="new-menu-sep"></div>
-                            <div class="new-menu-item" @click=${() => this.#importFromUrl()}><uui-icon name="icon-globe"></uui-icon> Import file via URL</div>
-                        </div>` : nothing}
-                    </div>
-                    <input type="file" id="fileUpload" multiple style="display:none" @change=${(e) => { if (e.target.files.length) { const f = Array.from(e.target.files); e.target.value = ''; this.uploadFiles(f); } }}>
-                ` : nothing}
-                ${this.isAdmin && this.selectedPaths.size ? html`<uui-button look="primary" color="danger" @click=${() => this.#bulkAction('delete')}><uui-icon name="icon-trash"></uui-icon> Delete (${this.selectedPaths.size})</uui-button>` : nothing}
-                ${this.isAdmin && this.#hasSelectedZips ? html`<uui-button look="primary" @click=${() => this.#bulkAction('extract-zip')}><uui-icon name="icon-zip"></uui-icon> Extract Zip</uui-button>` : nothing}
-            </div>
-            ${this.totalItems ? html`<div class="file-status">Showing ${this.items.length} of ${this.totalItems} items</div>` : nothing}
-        </div>`;
     }
 
     _renderDropZone() {

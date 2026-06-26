@@ -1,10 +1,11 @@
 import { css } from '@umbraco-cms/backoffice/external/lit';
 
 export const dashboardStyles = css`
-    :host { display: block; padding: 20px; }
+    :host { display: block; padding: 12px 16px; }
+    .fm-root { width: 100%; box-sizing: border-box; }
 
     /* Navbar */
-    .navbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 6px; background: var(--uui-color-surface, #fff); border: 1px solid var(--uui-color-border, #ccc); border-radius: 6px; min-width: 0; }
+    .navbar { display: flex; align-items: center; gap: 8px; margin-bottom: 0; padding: 6px; background: var(--uui-color-surface, #fff); border: 1px solid var(--uui-color-border, #ccc); border-radius: 6px; min-width: 0; }
     .nav-buttons { display: flex; gap: 2px; flex-shrink: 0; }
     .nav-btn { background: none; border: none; cursor: pointer; font-size: 16px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--uui-color-text, #333); }
     .nav-btn:hover:not(.disabled) { background: var(--uui-color-surface-alt, #f4f4f4); }
@@ -20,9 +21,6 @@ export const dashboardStyles = css`
     .search-input:focus { outline: none; border-color: var(--uui-color-interactive, #1b264f); }
 
     /* Action bar */
-    .action-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid var(--uui-color-border, #eee); }
-    .toolbar { display: flex; gap: 8px; align-items: center; }
-    .file-status { font-size: .8rem; color: #888; white-space: nowrap; }
     .new-menu-wrap { position: relative; }
     .new-menu { position: absolute; top: 100%; left: 0; margin-top: 4px; background: var(--uui-color-surface, #fff); border: 1px solid var(--uui-color-border, #ccc); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.15); z-index: 100; min-width: 180px; overflow: hidden; }
     .new-menu-item { padding: 8px 14px; cursor: pointer; font-size: .9rem; white-space: nowrap; }

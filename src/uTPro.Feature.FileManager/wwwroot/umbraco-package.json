@@ -1,20 +1,61 @@
 {
   "id": "utpro-file-manager",
   "name": "uTPro File Manager",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "extensions": [
     {
-      "type": "dashboard",
-      "alias": "utpro.fileManager.dashboard",
-      "name": "File Manager",
+      "type": "menuItem",
+      "alias": "uTPro.FileManager.MenuItem",
+      "name": "File Manager Menu Item",
+      "weight": 10,
+      "meta": {
+        "label": "File Manager",
+        "icon": "icon-folder",
+        "entityType": "utpro-file-manager-root",
+        "menus": ["Umb.Menu.AdvancedSettings"]
+      }
+    },
+    {
+      "type": "workspace",
+      "kind": "default",
+      "alias": "uTPro.FileManager.Workspace",
+      "name": "File Manager Workspace",
+      "meta": {
+        "entityType": "utpro-file-manager-root",
+        "headline": "File Manager"
+      }
+    },
+    {
+      "type": "workspaceContext",
+      "alias": "uTPro.FileManager.WorkspaceContext",
+      "name": "File Manager Workspace Context",
+      "api": "/App_Plugins/utpro-file-manager/context.js",
+      "conditions": [
+        { "alias": "Umb.Condition.WorkspaceAlias", "match": "uTPro.FileManager.Workspace" }
+      ]
+    },
+    {
+      "type": "workspaceFooterApp",
+      "alias": "uTPro.FileManager.FooterApp",
+      "name": "File Manager Footer App",
+      "element": "/App_Plugins/utpro-file-manager/footer.js",
+      "conditions": [
+        { "alias": "Umb.Condition.WorkspaceAlias", "match": "uTPro.FileManager.Workspace" }
+      ]
+    },
+    {
+      "type": "workspaceView",
+      "alias": "uTPro.FileManager.View",
+      "name": "File Manager View",
       "element": "/App_Plugins/utpro-file-manager/index.js",
       "weight": 100,
       "meta": {
         "label": "File Manager",
-        "pathname": "file-manager"
+        "pathname": "files",
+        "icon": "icon-folder"
       },
       "conditions": [
-        { "alias": "Umb.Condition.SectionAlias", "match": "Umb.Section.Settings" }
+        { "alias": "Umb.Condition.WorkspaceAlias", "match": "uTPro.FileManager.Workspace" }
       ]
     }
   ]

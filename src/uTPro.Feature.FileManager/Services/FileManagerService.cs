@@ -270,10 +270,15 @@ internal class FileManagerService(
 
     public string GetFullPath(string relativePath)
     {
-        var root = env.ContentRootPath;
+        var root = Path.GetFullPath(env.ContentRootPath);
+        var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar)
+            ? root
+            : root + Path.DirectorySeparatorChar;
         var full = Path.GetFullPath(Path.Combine(root, relativePath));
 
-        if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        // Allow the root itself, or any path strictly under it (avoids C:\site vs C:\site2 prefix match).
+        if (!full.Equals(root, StringComparison.OrdinalIgnoreCase) &&
+            !full.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase))
             throw new UnauthorizedAccessException("Access denied: path traversal detected.");
 
         return full;

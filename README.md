@@ -56,21 +56,46 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 - Path traversal protection on all endpoints
 
 ### UI
-- Windows Explorer-style navigation bar (back, reload, path bar, search)
-- Grouped action menus (New ▾, Actions ▾) for clean toolbar
+- Windows Explorer-style navigation bar (back, reload, home, breadcrumb path bar, search)
+- **Sticky toolbar** — the navigation bar stays pinned to the top while scrolling long file lists, flush with the section header on an opaque surface
+- **Workspace footer actions** — primary actions live in the Umbraco workspace footer for a clean, uncluttered toolbar:
+  - Browsing: `New ▾` menu (Upload, New Folder, New File, Import via URL), bulk `Delete`, `Extract Zip`, and a live item counter
+  - File open: `Save`, `Actions ▾` (Download, Rename, Delete), an `Unsaved` badge, plus file size and type
+- Footer actions respect the current user's role — non-admin users never see write actions
 - Multi-select with checkbox for bulk delete and zip extract
-- File view bar showing file size, last modified date, and file type
 - Responsive layout with Umbraco UI Library (UUI) components
 
 ## Compatibility
 
-| Umbraco | .NET | Package |
-|---------|------|---------|
-| 16.x    | 9.0  | 1.x     |
+| Umbraco | .NET  | Package |
+|---------|-------|---------|
+| 16.x    | 9.0   | 1.x     |
+| 16.x    | 9.0   | 2.x     |
+| 17.x    | 10.0  | 2.x     |
+| 18.x    | 10.0  | 2.x     |
 
 ## Screenshots
 
-*Settings → File Manager dashboard*
+### Admin view — full access to browse, edit, upload, and manage all server files
+![Admin view](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Admin%20-%20Screenshot%202026-03-31%20122558.png?raw=true)
+
+### Code editor with syntax highlighting (Monaco) and file actions menu
+![Code editor and file actions](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Edit%20File%20and%20Action%20File%20-%20Screenshot%202026-03-31%20122905.png?raw=true)
+
+### Select and extract ZIP files directly in the backoffice
+![Extract ZIP](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Extract%20ZIP%20-%20Screenshot%202026-03-31%20122558.png?raw=true)
+
+### Paginated loading — handles 2000+ files without UI lag
+![Load more](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Load%20more%20-%20Screenshot%202026-03-31%20122734.png?raw=true)
+
+### Create new files, folders, or import from URL
+![New file or import URL](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/New%20File%20or%20Import%20Url%20-%20Screenshot%202026-03-31%20122823.png?raw=true)
+
+### Non-admin users are restricted to wwwroot only
+![Non-admin restricted to wwwroot](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/User%20Not%20Sensitive%20data%20-%20Screenshot%202026-03-31%20123133.png?raw=true)
+
+### Sensitive Data role — read-only access to edit and view all files
+![Sensitive Data role](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/User%20Sensitive%20data%20Edit%20file%20-%20Screenshot%202026-03-31%20123133.png?raw=true)
 
 ## Development
 
@@ -97,7 +122,9 @@ src/uTPro.Feature.FileManager/
 │   ├── Requests.cs                    # API request DTOs
 │   └── Results.cs                     # API response DTOs
 └── wwwroot/
-    ├── index.js                       # Main Lit Element dashboard component
+    ├── index.js                       # Main Lit Element dashboard view
+    ├── footer.js                      # Workspace footer app (New/Save/Actions/bulk + item count)
+    ├── context.js                     # Shared workspace context bridging view ↔ footer
     ├── helpers.js                     # Constants, utilities, icon mapping
     ├── styles.js                      # CSS styles
     └── umbraco-package.json           # Umbraco package manifest
