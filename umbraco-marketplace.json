@@ -18,31 +18,31 @@
       "Caption": "uTPro.Feature.FileManager - v2.0.0"
     },
     {
-      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Admin%20-%20Screenshot%202026-03-31%20122558.png?raw=true",
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Admin%20-%20Screenshot%202026-03-31%20122558.png",
       "Caption": "Admin view — full access to browse, edit, upload, and manage all server files"
     },
     {
-      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Edit%20File%20and%20Action%20File%20-%20Screenshot%202026-03-31%20122905.png?raw=true",
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Edit%20File%20and%20Action%20File%20-%20Screenshot%202026-03-31%20122905.png",
       "Caption": "Code editor with syntax highlighting (Monaco) and file actions menu"
     },
     {
-      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Extract%20ZIP%20-%20Screenshot%202026-03-31%20122558.png?raw=true",
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Extract%20ZIP%20-%20Screenshot%202026-03-31%20122558.png",
       "Caption": "Select and extract ZIP files directly in the backoffice"
     },
     {
-      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Load%20more%20-%20Screenshot%202026-03-31%20122734.png?raw=true",
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Load%20more%20-%20Screenshot%202026-03-31%20122734.png",
       "Caption": "Paginated loading — handles 2000+ files without UI lag"
     },
     {
-      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/New%20File%20or%20Import%20Url%20-%20Screenshot%202026-03-31%20122823.png?raw=true",
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/New%20File%20or%20Import%20Url%20-%20Screenshot%202026-03-31%20122823.png",
       "Caption": "Create new files, folders, or import from URL"
     },
     {
-      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/User%20Not%20Sensitive%20data%20-%20Screenshot%202026-03-31%20123133.png?raw=true",
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/User%20Not%20Sensitive%20data%20-%20Screenshot%202026-03-31%20123133.png",
       "Caption": "Non-admin users are restricted to wwwroot only"
     },
     {
-      "ImageUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/User%20Sensitive%20data%20Edit%20file%20-%20Screenshot%202026-03-31%20123133.png?raw=true",
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/User%20Sensitive%20data%20Edit%20file%20-%20Screenshot%202026-03-31%20123133.png",
       "Caption": "Sensitive Data role — read-only access to edit and view all files"
     }
   ],

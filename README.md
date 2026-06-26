@@ -80,25 +80,25 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 ![uTPro.Feature.FileManager v2.0.0](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Screenshot-UI2.0.0.png)
 
 ### Admin view — full access to browse, edit, upload, and manage all server files
-![Admin view](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Admin%20-%20Screenshot%202026-03-31%20122558.png?raw=true)
+![Admin view](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Admin%20-%20Screenshot%202026-03-31%20122558.png)
 
 ### Code editor with syntax highlighting (Monaco) and file actions menu
-![Code editor and file actions](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Edit%20File%20and%20Action%20File%20-%20Screenshot%202026-03-31%20122905.png?raw=true)
+![Code editor and file actions](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Edit%20File%20and%20Action%20File%20-%20Screenshot%202026-03-31%20122905.png)
 
 ### Select and extract ZIP files directly in the backoffice
-![Extract ZIP](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Extract%20ZIP%20-%20Screenshot%202026-03-31%20122558.png?raw=true)
+![Extract ZIP](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Extract%20ZIP%20-%20Screenshot%202026-03-31%20122558.png)
 
 ### Paginated loading — handles 2000+ files without UI lag
-![Load more](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/Load%20more%20-%20Screenshot%202026-03-31%20122734.png?raw=true)
+![Load more](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Load%20more%20-%20Screenshot%202026-03-31%20122734.png)
 
 ### Create new files, folders, or import from URL
-![New file or import URL](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/New%20File%20or%20Import%20Url%20-%20Screenshot%202026-03-31%20122823.png?raw=true)
+![New file or import URL](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/New%20File%20or%20Import%20Url%20-%20Screenshot%202026-03-31%20122823.png)
 
 ### Non-admin users are restricted to wwwroot only
-![Non-admin restricted to wwwroot](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/User%20Not%20Sensitive%20data%20-%20Screenshot%202026-03-31%20123133.png?raw=true)
+![Non-admin restricted to wwwroot](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/User%20Not%20Sensitive%20data%20-%20Screenshot%202026-03-31%20123133.png)
 
 ### Sensitive Data role — read-only access to edit and view all files
-![Sensitive Data role](https://github.com/T4VN/uTPro.Feature.FileManager/blob/main/Image/User%20Sensitive%20data%20Edit%20file%20-%20Screenshot%202026-03-31%20123133.png?raw=true)
+![Sensitive Data role](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/User%20Sensitive%20data%20Edit%20file%20-%20Screenshot%202026-03-31%20123133.png)
 
 ## Development
 
