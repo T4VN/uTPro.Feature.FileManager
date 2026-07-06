@@ -9,9 +9,6 @@
     "ImageUrl": "https://github.com/t4vn.png",
     "SyncContributorsFromRepository": true
   },
-  "PackagesByAuthor": [
-    "uTPro.Feature.AuditLog"
-  ],
   "Screenshots": [
     {
       "ImageUrl":"https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Screenshot-UI2.0.0.png",
