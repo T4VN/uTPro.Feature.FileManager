@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
 using uTPro.Feature.FileManager.Models;
@@ -6,6 +8,7 @@ namespace uTPro.Feature.FileManager.Services;
 
 internal class FileManagerService(
     IWebHostEnvironment env,
+    IHttpClientFactory httpClientFactory,
     ILogger<FileManagerService> logger) : IFileManagerService
 {
     private static readonly HashSet<string> EditableExtensions =
@@ -162,7 +165,9 @@ internal class FileManagerService(
         if (!Directory.Exists(fullDir))
             throw new DirectoryNotFoundException($"Directory not found: {safePath}");
 
-        using var httpClient = new HttpClient();
+        await ValidateUrlAsync(url);
+
+        var httpClient = httpClientFactory.CreateClient();
         httpClient.Timeout = TimeSpan.FromMinutes(5);
         var response = await httpClient.GetAsync(url);
         response.EnsureSuccessStatusCode();
@@ -178,6 +183,71 @@ internal class FileManagerService(
         await response.Content.CopyToAsync(fileStream);
 
         logger.LogInformation("Imported from URL: {Url} -> {Path}/{Name}", url, safePath, safeName);
+    }
+
+    /// <summary>
+    /// SSRF guard for <see cref="ImportFromUrl"/>: only allow http/https, and reject any URL whose
+    /// host resolves to a loopback / private / link-local / unique-local address. This stops an
+    /// admin-supplied URL from being used to reach internal-only services or the cloud metadata
+    /// endpoint (169.254.169.254). Resolves DNS up front and validates every returned address.
+    /// </summary>
+    private static async Task ValidateUrlAsync(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)
+            || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            throw new InvalidOperationException("Invalid URL.");
+
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            throw new InvalidOperationException("Only http and https URLs are allowed.");
+
+        IPAddress[] addresses;
+        if (IPAddress.TryParse(uri.Host, out var literal))
+        {
+            addresses = [literal];
+        }
+        else
+        {
+            try { addresses = await Dns.GetHostAddressesAsync(uri.Host); }
+            catch (SocketException) { throw new InvalidOperationException($"Could not resolve host: {uri.Host}"); }
+        }
+
+        if (addresses.Length == 0 || addresses.Any(IsPrivateOrReserved))
+            throw new UnauthorizedAccessException("Access denied: the URL points to a private or reserved address.");
+    }
+
+    private static bool IsPrivateOrReserved(IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6)
+            address = address.MapToIPv4();
+
+        if (IPAddress.IsLoopback(address))
+            return true;
+
+        var bytes = address.GetAddressBytes();
+
+        if (address.AddressFamily == AddressFamily.InterNetwork) // IPv4
+        {
+            return bytes[0] switch
+            {
+                10 => true,                                   // 10.0.0.0/8
+                127 => true,                                  // 127.0.0.0/8 (loopback)
+                0 => true,                                    // 0.0.0.0/8
+                169 when bytes[1] == 254 => true,             // 169.254.0.0/16 (link-local / metadata)
+                172 when bytes[1] >= 16 && bytes[1] <= 31 => true, // 172.16.0.0/12
+                192 when bytes[1] == 168 => true,             // 192.168.0.0/16
+                _ => bytes[0] >= 224                           // 224.0.0.0/4 multicast + reserved
+            };
+        }
+
+        if (address.AddressFamily == AddressFamily.InterNetworkV6) // IPv6
+        {
+            return address.IsIPv6LinkLocal
+                || address.IsIPv6SiteLocal
+                || address.IsIPv6UniqueLocal   // fc00::/7
+                || address.IsIPv6Multicast;
+        }
+
+        return true;
     }
 
     private static string ContentTypeToExtension(string? contentType)

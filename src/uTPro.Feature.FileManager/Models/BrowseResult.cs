@@ -10,11 +10,3 @@ public class BrowseResult
     public int PageSize { get; set; } = 100;
     public int TotalPages { get; set; }
 }
-
-public class FileContentResult
-{
-    public string Path { get; set; } = "";
-    public string Name { get; set; } = "";
-    public string Content { get; set; } = "";
-    public string Extension { get; set; } = "";
-}
