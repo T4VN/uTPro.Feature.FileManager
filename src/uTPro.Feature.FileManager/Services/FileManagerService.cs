@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using uTPro.Feature.FileManager.Models;
 
 namespace uTPro.Feature.FileManager.Services;
@@ -9,7 +10,8 @@ namespace uTPro.Feature.FileManager.Services;
 internal class FileManagerService(
     IWebHostEnvironment env,
     IHttpClientFactory httpClientFactory,
-    ILogger<FileManagerService> logger) : IFileManagerService
+    ILogger<FileManagerService> logger,
+    IOptions<FileManagerOptions> fileManagerOptions) : IFileManagerService
 {
     private static readonly HashSet<string> EditableExtensions =
     [
@@ -167,20 +169,41 @@ internal class FileManagerService(
 
         await ValidateUrlAsync(url);
 
+        var options = fileManagerOptions.Value;
+
         var httpClient = httpClientFactory.CreateClient();
         httpClient.Timeout = TimeSpan.FromMinutes(5);
         var response = await httpClient.GetAsync(url);
         response.EnsureSuccessStatusCode();
+
+        // Reject early if the server advertises a size that exceeds the configured limit.
+        if (response.Content.Headers.ContentLength is { } contentLength
+            && contentLength > options.MaxUploadSizeBytes)
+            throw new InvalidOperationException($"File exceeds the maximum upload size of {options.MaxUploadSizeMB} MB.");
 
         // Fixed filename format: import-file-<datetime>.<ext from content-type>
         var ext = ContentTypeToExtension(response.Content.Headers.ContentType?.MediaType);
         var fileName = $"import-file-{DateTime.Now:yyyyMMddHHmmss}{ext}";
 
         var safeName = SanitizeName(fileName);
+
+        if (!options.IsExtensionAllowed(safeName))
+            throw new InvalidOperationException($"File type not allowed: {ext}");
+
         var fullPath = Path.Combine(fullDir, safeName);
 
-        await using var fileStream = new FileStream(fullPath, FileMode.Create);
-        await response.Content.CopyToAsync(fileStream);
+        await using (var fileStream = new FileStream(fullPath, FileMode.Create))
+        {
+            await response.Content.CopyToAsync(fileStream);
+        }
+
+        // Enforce the size limit again after download in case ContentLength was absent or wrong.
+        var writtenLength = new FileInfo(fullPath).Length;
+        if (writtenLength > options.MaxUploadSizeBytes)
+        {
+            File.Delete(fullPath);
+            throw new InvalidOperationException($"File exceeds the maximum upload size of {options.MaxUploadSizeMB} MB.");
+        }
 
         logger.LogInformation("Imported from URL: {Url} -> {Path}/{Name}", url, safePath, safeName);
     }

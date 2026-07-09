@@ -22,3 +22,5 @@ Thumbs.db
 **/.*/
 !.github/
 !**/.github/
+**/umbraco/
+**/wwwroot

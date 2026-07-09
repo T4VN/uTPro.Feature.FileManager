@@ -8,7 +8,7 @@
 
     <PackageId>uTPro.Feature.FileManager</PackageId>
     <Title>uTPro File Manager for Umbraco (16, 17, 18)</Title>
-    <Version>2.0.1</Version>
+    <Version>2.1.0</Version>
     <Authors>T4VN</Authors>
     <Company>T4VN</Company>
     <Description>A powerful file management dashboard for the Umbraco backoffice (Umbraco 16, 17, 18). Browse, upload, download, edit with Monaco code editor, preview media, rename, delete, extract ZIP, and import files via URL. Role-based access control and zero configuration.</Description>
@@ -18,7 +18,7 @@
     <RepositoryUrl>https://github.com/T4VN/uTPro.Feature.FileManager</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
-    <PackageReleaseNotes>v2.0.1: Maintenance release — clean rebuild from a wiped output to guarantee the shipped assembly is current (packaging now goes through a deterministic clean-pack step). No source or API changes versus 2.0.0. v2.0.0: Support for Umbraco 16, 17 and 18 (multi-target net9.0/net10.0). Hardened path-traversal root check and upload filename sanitization. No breaking API changes.</PackageReleaseNotes>
+    <PackageReleaseNotes>v2.1.0: Configurable upload limits via the uTPro:Feature:FileManager section (MaxUploadSizeMB, AllowedUploadExtensions allow-list, BlockedUploadExtensions block-list) enforced on both file upload and import-from-URL. Import-from-URL now uses IHttpClientFactory and includes an SSRF guard that rejects URLs resolving to loopback/private/link-local/reserved addresses and non-http(s) schemes. No breaking API changes. v2.0.1: Maintenance release — clean rebuild from a wiped output to guarantee the shipped assembly is current (packaging now goes through a deterministic clean-pack step). No source or API changes versus 2.0.0. v2.0.0: Support for Umbraco 16, 17 and 18 (multi-target net9.0/net10.0). Hardened path-traversal root check and upload filename sanitization. No breaking API changes.</PackageReleaseNotes>
 
     <StaticWebAssetBasePath>App_Plugins/utpro-file-manager</StaticWebAssetBasePath>
     <!-- Packages are produced only via the repo's pack.ps1 (clean build + cache eviction),

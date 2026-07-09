@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Umbraco.Cms.Api.Management.Controllers;
 using Umbraco.Cms.Api.Management.Routing;
 using Umbraco.Cms.Core;
@@ -24,7 +25,8 @@ namespace uTPro.Feature.FileManager.Controllers;
 [Authorize(Policy = AuthorizationPolicies.SectionAccessSettings)]
 public class FileManagerApiController(
     IFileManagerService fileManager,
-    IBackOfficeSecurityAccessor backOfficeSecurityAccessor) : ManagementApiControllerBase
+    IBackOfficeSecurityAccessor backOfficeSecurityAccessor,
+    IOptions<FileManagerOptions> fileManagerOptions) : ManagementApiControllerBase
 {
     private const string NonAdminRoot = "wwwroot";
 
@@ -186,6 +188,16 @@ public class FileManagerApiController(
             var safeFileName = Path.GetFileName(file.FileName);
             if (string.IsNullOrWhiteSpace(safeFileName))
                 return BadRequest(new { error = "Invalid file name." });
+
+            var options = fileManagerOptions.Value;
+            if (file.Length > options.MaxUploadSizeBytes)
+                return BadRequest(new { error = $"File exceeds the maximum upload size of {options.MaxUploadSizeMB} MB." });
+            if (!options.IsExtensionAllowed(safeFileName))
+            {
+                var ext = Path.GetExtension(safeFileName).ToLowerInvariant();
+                return BadRequest(new { error = $"File type '{ext}' is not allowed." });
+            }
+
             var filePath = Path.Combine(fullDir, safeFileName);
             await using var stream = new FileStream(filePath, FileMode.Create);
             await file.CopyToAsync(stream);
