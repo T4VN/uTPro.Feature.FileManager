@@ -56,6 +56,8 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 - Non-admin users are jailed to `wwwroot/` — cannot access `appsettings.json`, `web.config`, or any files outside `wwwroot`
 - Protected files: `web.config`, `appsettings.json`, `appsettings.development.json` cannot be modified or deleted
 - Path traversal protection on all endpoints
+- **Upload validation** — configurable maximum size plus optional allow-list / block-list of extensions (see [Configuration](#configuration)), enforced on both file upload and import-from-URL
+- **SSRF protection on Import via URL** — the supplied URL must use `http`/`https`, and any URL whose host resolves to a loopback, private, link-local, or reserved address (e.g. the cloud metadata endpoint `169.254.169.254`) is rejected. Requests go through `IHttpClientFactory` to avoid socket exhaustion.
 
 ### UI
 - Windows Explorer-style navigation bar (back, reload, home, breadcrumb path bar, search)
@@ -67,6 +69,32 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 - Multi-select with checkbox for bulk delete and zip extract
 - Responsive layout with Umbraco UI Library (UUI) components
 
+## Configuration
+
+No configuration is required — the package ships with safe defaults. To customize the upload limits, add an optional `uTPro:Feature:FileManager` section to `appsettings.json`:
+
+```json
+{
+  "uTPro": {
+    "Feature": {
+      "FileManager": {
+        "MaxUploadSizeMB": 50,
+        "AllowedUploadExtensions": [],
+        "BlockedUploadExtensions": [ ".exe", ".dll", ".bat" ]
+      }
+    }
+  }
+}
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `MaxUploadSizeMB` | `50` | Maximum allowed upload size in megabytes. Enforced on both file upload and import-from-URL. |
+| `AllowedUploadExtensions` | `[]` (allow all) | Allow-list of file extensions. When non-empty, only these extensions may be uploaded. Entries are case-insensitive and may be written with or without a leading dot (`".zip"` or `"zip"`). |
+| `BlockedUploadExtensions` | `[]` | Block-list of file extensions. These are always rejected, even if present in the allow-list. |
+
+> The limits apply to write operations only and are enforced server-side, independent of any client-side checks.
+
 ## Compatibility
 
 | Umbraco | .NET  | Package |
@@ -75,6 +103,8 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 | 16.x    | 9.0   | 2.x     |
 | 17.x    | 10.0  | 2.x     |
 | 18.x    | 10.0  | 2.x     |
+
+The package multi-targets `net9.0` (Umbraco 16) and `net10.0` (Umbraco 17 & 18); a single install picks the right build for your project automatically.
 
 ## Screenshots
 
@@ -134,6 +164,24 @@ src/uTPro.Feature.FileManager/
     ├── styles.js                      # CSS styles
     └── umbraco-package.json           # Umbraco package manifest
 ```
+
+## Changelog
+
+### 2.1.0
+- **Configurable upload limits** via the `uTPro:Feature:FileManager` section — `MaxUploadSizeMB`, an `AllowedUploadExtensions` allow-list, and a `BlockedUploadExtensions` block-list — enforced on both file upload and import-from-URL. See [Configuration](#configuration).
+- **Import via URL hardening** — now uses `IHttpClientFactory` and includes an SSRF guard that rejects URLs resolving to loopback/private/link-local/reserved addresses and any non-`http(s)` scheme.
+- No breaking API changes.
+
+### 2.0.1
+- Maintenance release — clean rebuild from a wiped output to guarantee the shipped assembly is current (packaging now goes through a deterministic clean-pack step). No source or API changes versus 2.0.0.
+
+### 2.0.0
+- Support for Umbraco 16, 17 and 18 (multi-target `net9.0` / `net10.0`).
+- Hardened path-traversal root check and upload filename sanitization.
+- No breaking API changes.
+
+### 1.x
+- Initial releases — file browsing, upload/download, code editor, media preview, and role-based access for Umbraco 16.
 
 ## License
 
