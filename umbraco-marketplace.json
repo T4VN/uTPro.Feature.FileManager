@@ -11,6 +11,14 @@
   },
   "Screenshots": [
     {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Screenshot%202026-07-11%20095254.png",
+      "Caption": "Media Cleanup Mode - Scan file large"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Screenshot%202026-07-11%20095242.png",
+      "Caption": "Media Cleanup Mode"
+    },
+    {
       "ImageUrl":"https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Screenshot-UI2.0.0.png",
       "Caption": "uTPro.Feature.FileManager - v2.0.0"
     },
