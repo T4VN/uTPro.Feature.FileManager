@@ -2,7 +2,7 @@
   "$schema": "https://marketplace.umbraco.com/umbraco-marketplace-schema.json",
   "Category": "Developer Tools",
   "Title": "uTPro File Manager",
-  "Description": "A powerful file management dashboard for Umbraco 16+ backoffice. Browse, upload, download, edit (with Monaco code editor), preview media, rename, delete, extract ZIP, and import files via URL. Features Windows Explorer-style navigation, role-based access control (Admin/Sensitive Data/Media), pagination for large directories, and URL state persistence. Zero configuration required.",
+  "Description": "A powerful file management dashboard for Umbraco 16+ backoffice. Browse, upload, download, edit (with Monaco code editor), preview media, rename, delete, extract ZIP, and import files via URL. Includes a Media Cleanup scan that reports unused, broken, duplicate, orphaned and large media files (configurable size threshold). Features Windows Explorer-style navigation, role-based access control (Admin/Sensitive Data/Media), pagination for large directories, and URL state persistence. Zero configuration required.",
   "AuthorDetails": {
     "Name": "T4VN",
     "Url": "https://t4vn.com",
@@ -54,7 +54,8 @@
     "media-preview",
     "upload",
     "download",
-    "zip-extract"
+    "zip-extract",
+    "media-cleanup"
   ],
   "LookingForContributors": true,
   "PackageType": "Package",

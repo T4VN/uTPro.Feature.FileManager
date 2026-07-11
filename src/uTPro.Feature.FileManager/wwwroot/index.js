@@ -17,10 +17,12 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         previewFile: { state: true }, selectedPaths: { state: true },
         isAdmin: { state: true }, showNewMenu: { state: true },
         activeFile: { state: true }, showActionsMenu: { state: true },
+        scanMode: { state: true }, scanFilter: { state: true }, scanData: { state: true },
     };
     static styles = dashboardStyles;
 
     #authContext; #fmContext = null; #originalContent = ''; #searchTimeout = null;
+    #scanFiltered = []; // full list for the active scan filter (client-side paged into `items`)
     #beforeUnloadHandler = (e) => { if (this.isDirty) { e.preventDefault(); e.returnValue = ''; } };
 
     constructor() {
@@ -34,6 +36,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             searchQuery: '', previewFile: null,
             selectedPaths: new Set(), isAdmin: false,
             showNewMenu: false, activeFile: null, showActionsMenu: false,
+            scanMode: false, scanFilter: 'unused', scanData: null,
         });
         this.consumeContext(UMB_AUTH_CONTEXT, (ctx) => { this.#authContext = ctx; });
         this.consumeContext(UTPRO_FILEMANAGER_CONTEXT, (ctx) => {
@@ -75,6 +78,10 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             hasSelectedZips: this.#hasSelectedZips,
             activeSize: af?.size || 0,
             activeExt: af?.extension || '',
+            scanMode: !!this.scanMode,
+            scanFilter: this.scanFilter,
+            scanCounts: this.scanData?.counts || {},
+            scanThresholdMB: this.scanData?.largeThresholdMB || 0,
         });
     }
 
@@ -86,6 +93,45 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     fmDownloadActive() { if (this.activeFile) this.downloadFile(this.activeFile); }
     fmRenameActive() { if (this.activeFile) this.renameItem(this.activeFile, true); }
     fmDeleteActive() { if (this.activeFile) this.deleteItem(this.activeFile, true); }
+    fmScan() { this.runScan(); }
+    fmExitScan() { this.exitScan(); }
+    fmSetScanFilter(filter) { this.setScanFilter(filter); }
+
+    // ── Media Cleanup scan mode ──────────────────────────
+
+    async runScan() {
+        if (!this.#confirmDiscard()) return;
+        this.isLoading = true; this.errorMessage = '';
+        this.editingFile = null; this.previewFile = null; this.activeFile = null;
+        this.isDirty = false; this.selectedPaths = new Set();
+        try {
+            const d = await this.api('scan-media', {}, 'POST');
+            this.scanData = d;
+            this.scanMode = true;
+            this.currentPath = '';
+            this.setScanFilter('unused');
+        } catch (e) { this.showError(e.message); }
+        this.isLoading = false; this.#syncUrl();
+    }
+
+    exitScan() {
+        this.scanMode = false; this.scanData = null; this.scanFilter = 'all';
+        this.browse('');
+    }
+
+    setScanFilter(filter) {
+        if (!this.scanData) return;
+        const map = {
+            unused: this.scanData.unused, broken: this.scanData.broken, duplicate: this.scanData.duplicate,
+            orphaned: this.scanData.orphaned, large: this.scanData.large,
+        };
+        this.scanFilter = filter;
+        this.#scanFiltered = map[filter] || [];
+        this.totalItems = this.#scanFiltered.length;
+        this.totalPages = Math.max(1, Math.ceil(this.totalItems / PAGE_SIZE));
+        this.currentPage = 1;
+        this.items = this.#scanFiltered.slice(0, PAGE_SIZE);
+    }
 
     // ── API & helpers ────────────────────────────────────
 
@@ -142,6 +188,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         if (append) { this.isLoadingMore = true; }
         else {
             this.isLoading = true; this.errorMessage = '';
+            this.scanMode = false; this.scanData = null;
             this.editingFile = null; this.previewFile = null; this.activeFile = null;
             this.isDirty = false; this.selectedPaths = new Set();
             if (path !== this.currentPath) this.searchQuery = '';
@@ -155,7 +202,15 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         this.#scrollPathBar(); this.#syncUrl();
     }
 
-    async loadMore() { if (this.currentPage < this.totalPages) await this.browse(this.currentPath, this.currentPage + 1, true); }
+    async loadMore() {
+        if (this.scanMode) {
+            if (this.currentPage >= this.totalPages) return;
+            this.currentPage++;
+            this.items = this.#scanFiltered.slice(0, this.currentPage * PAGE_SIZE);
+            return;
+        }
+        if (this.currentPage < this.totalPages) await this.browse(this.currentPath, this.currentPage + 1, true);
+    }
     goBack() { if (this.currentPath) { const p = this.currentPath.split('/'); p.pop(); this.browse(p.join('/')); } }
     get #canGoBack() { return !!this.currentPath; }
     #handleSearch(e) { clearTimeout(this.#searchTimeout); const v = e.target.value; this.#searchTimeout = setTimeout(() => { this.searchQuery = v; this.browse(this.currentPath); }, 300); }
@@ -163,6 +218,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     // ── Open / close file ────────────────────────────────
 
     async openItem(item) {
+        if (this.scanMode) return; // scan results are report-only
         if (item.type === 'folder') return this.browse(item.path);
         // File actions require Admin or SensitiveData
         if (!this.isAdmin && !this.hasSensitiveData) return;
@@ -317,9 +373,9 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         const isEdit = !!this.editingFile;
         return html`<div class="fm-root">
             <div style="position:sticky; top:0; z-index:999; background: var(--uui-color-surface, #fff); margin:-12px -16px 0; padding:0 16px;">
-                ${this.isAdmin ? this._renderDropZone() : nothing}
+                ${this._renderDropZone(this.isAdmin && !this.scanMode)}
                 ${this._renderNavBar()}
-                ${this.isAdmin ? this._renderDropZone() : nothing}
+                ${this._renderDropZone(this.isAdmin && !this.scanMode)}
             </div>
             ${isEdit ? this._renderEditorContent() : this._renderPreviewContent()}
             ${!viewing ? html`
@@ -335,16 +391,18 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         const af = this.activeFile;
         return html`<div class="navbar">
             <div class="nav-buttons">
-                <button class="nav-btn ${this.#canGoBack || af ? '' : 'disabled'}" @click=${() => af ? this.closeFile() : this.goBack()} title="Back"><uui-icon name="icon-arrow-left"></uui-icon></button>
-                <button class="nav-btn" @click=${() => window.location.reload()} title="Reload"><uui-icon name="icon-refresh"></uui-icon></button>
-                <button class="nav-btn" @click=${() => { this.closeFile(); this.browse(''); }} title="Root"><uui-icon name="icon-home"></uui-icon></button>
+                <button class="nav-btn ${this.scanMode ? 'disabled' : (this.#canGoBack || af ? '' : 'disabled')}" ?disabled=${this.scanMode} @click=${() => { if (this.scanMode) return; af ? this.closeFile() : this.goBack(); }} title="Back"><uui-icon name="icon-arrow-left"></uui-icon></button>
+                <button class="nav-btn" @click=${() => this.scanMode ? this.runScan() : window.location.reload()} title="Reload"><uui-icon name="icon-refresh"></uui-icon></button>
+                <button class="nav-btn" @click=${() => { if (this.scanMode) { this.exitScan(); } else { this.closeFile(); this.browse(''); } }} title="Root"><uui-icon name="icon-home"></uui-icon></button>
             </div>
             <div class="path-bar">
                 <span class="path-crumb" @click=${() => { this.closeFile(); this.browse(''); }}>root</span>
                 ${parts.map((part, i) => { const p = parts.slice(0, i + 1).join('/'); return html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb" @click=${() => { this.closeFile(); this.browse(p); }}>${part}</span>`; })}
                 ${af ? html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb path-active">${af.name}</span>` : nothing}
             </div>
-            ${!af ? html`<input type="text" class="search-input" placeholder="Search..." .value=${this.searchQuery} @input=${(e) => this.#handleSearch(e)}>` : html`<span class="file-meta" style="width:180px;text-align:right">${new Date(af.lastModified).toLocaleString()}</span>`}
+            ${af ? html`<span class="file-meta" style="width:180px;text-align:right">${new Date(af.lastModified).toLocaleString()}</span>`
+                : (this.scanMode ? html`<span class="file-meta scan-badge">Media Cleanup scan</span>`
+                    : html`<input type="text" class="search-input" placeholder="Search..." .value=${this.searchQuery} @input=${(e) => this.#handleSearch(e)}>`)}
         </div>`;
     }
 
@@ -369,20 +427,24 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         return html`<div class="preview-inline"><p>Cannot preview this file type.</p></div>`;
     }
 
-    _renderDropZone() {
-        return html`<div class="drop-zone ${this.dragOver ? 'active' : ''}" @dragover=${(e) => { e.preventDefault(); this.dragOver = true; }} @dragleave=${() => { this.dragOver = false; }} @drop=${(e) => { e.preventDefault(); this.dragOver = false; if (e.dataTransfer.files.length) this.uploadFiles(e.dataTransfer.files); }}>${this.dragOver ? 'Drop files here to upload' : ''}</div>`;
+    _renderDropZone(isDrop) {
+        if (isDrop) {
+            return html`<div class="drop-zone ${this.dragOver ? 'active' : ''}" @dragover=${(e) => { e.preventDefault(); this.dragOver = true; }} @dragleave=${() => { this.dragOver = false; }} @drop=${(e) => { e.preventDefault(); this.dragOver = false; if (e.dataTransfer.files.length) this.uploadFiles(e.dataTransfer.files); }}>${this.dragOver ? 'Drop files here to upload' : ''}</div>`;
+        }
+        return html`<div class="drop-zone"></div>`;
     }
 
     _renderFileList() {
-        if (!this.items.length) return html`<div class="empty">This folder is empty</div>`;
+        if (!this.items.length) return html`<div class="empty">${this.scanMode ? 'No items found in this category.' : 'This folder is empty'}</div>`;
         return html`
             <uui-table aria-label="Files">
                 <uui-table-head>
-                    ${this.isAdmin ? html`<uui-table-head-cell class="check-cell"><input type="checkbox" .checked=${this.selectedPaths.size === this.items.length && this.items.length > 0} @change=${() => this.#toggleSelectAll()}></uui-table-head-cell>` : nothing}
+                    ${this.isAdmin && !this.scanMode ? html`<uui-table-head-cell class="check-cell"><input type="checkbox" .checked=${this.selectedPaths.size === this.items.length && this.items.length > 0} @change=${() => this.#toggleSelectAll()}></uui-table-head-cell>` : nothing}
                     <uui-table-head-cell>Name</uui-table-head-cell>
+                    ${this.scanMode ? html`<uui-table-head-cell class="date-cell">Status</uui-table-head-cell>` : nothing}
                     <uui-table-head-cell class="size-cell">Size</uui-table-head-cell>
                     <uui-table-head-cell class="date-cell">Date Modified</uui-table-head-cell>
-                    <uui-table-head-cell class="actions-cell">Actions</uui-table-head-cell>
+                    ${!this.scanMode ? html`<uui-table-head-cell class="actions-cell">Actions</uui-table-head-cell>` : nothing}
                 </uui-table-head>
                 ${this.items.map(item => this._renderRow(item))}
             </uui-table>
@@ -390,6 +452,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     }
 
     _renderRow(item) {
+        if (this.scanMode) return this._renderScanRow(item);
         const canOpen = this.isAdmin || this.hasSensitiveData;
         const clickable = item.type === 'folder' || (canOpen && (item.isEditable || isMedia(item.extension)));
         return html`<uui-table-row class="${this.selectedPaths.has(item.path) ? 'selected' : ''}">
@@ -402,6 +465,18 @@ export class UtproFileManagerDashboard extends UmbLitElement {
                 ${this.isAdmin ? html`<uui-button look="outline" compact @click=${() => this.renameItem(item)} title="Rename"><uui-icon name="icon-edit"></uui-icon></uui-button>
                 <uui-button look="outline" compact @click=${() => this.deleteItem(item)} color="danger" title="Delete"><uui-icon name="icon-trash"></uui-icon></uui-button>` : nothing}
             </uui-table-cell>
+        </uui-table-row>`;
+    }
+
+    _renderScanRow(item) {
+        const badge = item.detail || item.category || '';
+        const modified = item.lastModified && new Date(item.lastModified).getFullYear() > 1
+            ? new Date(item.lastModified).toLocaleString() : '';
+        return html`<uui-table-row>
+            <uui-table-cell><span class="file-name" title=${item.path}>${getIcon(item)} ${item.name}</span></uui-table-cell>
+            <uui-table-cell class="date-cell">${badge ? html`<span class="scan-tag scan-tag-${item.category}">${badge}</span>` : nothing}</uui-table-cell>
+            <uui-table-cell class="size-cell">${formatSize(item.size)}</uui-table-cell>
+            <uui-table-cell class="date-cell">${modified}</uui-table-cell>
         </uui-table-row>`;
     }
 }

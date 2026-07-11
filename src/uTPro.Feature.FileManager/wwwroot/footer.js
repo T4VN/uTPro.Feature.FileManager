@@ -34,8 +34,30 @@ export class UtproFileManagerFooter extends UmbLitElement {
 
     render() {
         const s = this._s;
+        // Scan mode owns the footer entirely (filter cluster + exit).
+        if (s.scanMode) return this.#renderScanActions(s);
         // When a file is open, show its Save/Actions cluster; otherwise the New/bulk cluster.
         return s.viewing ? this.#renderFileActions(s) : this.#renderListActions(s);
+    }
+
+    #renderScanActions(s) {
+        const c = s.scanCounts || {};
+        const active = s.scanFilter || 'unused';
+        const filterBtn = (key, label, count, title) => html`<uui-button
+            look=${active === key ? 'primary' : 'outline'} color=${active === key ? 'positive' : 'default'} compact
+            title=${title || label} @click=${() => this.#context?.setScanFilter(key)}>${label} (${count || 0})</uui-button>`;
+        const largeTitle = s.scanThresholdMB ? `Files at or above ${s.scanThresholdMB} MB` : 'Large files';
+        return html`<div class="footer">
+            <div class="left">
+                <uui-button look="outline" compact @click=${() => this.#context?.exitScan()} title="Exit scan and return to File Manager"><uui-icon name="icon-home"></uui-icon> Exit</uui-button>
+                ${filterBtn('unused', 'Unused media', c.unused)}
+                ${filterBtn('broken', 'Broken media', c.broken)}
+                ${filterBtn('duplicate', 'Duplicates', c.duplicate)}
+                ${filterBtn('orphaned', 'Orphaned files', c.orphaned)}
+                ${filterBtn('large', 'Large files', c.large, largeTitle)}
+            </div>
+            <div class="file-status">Showing ${s.itemsLength} of ${s.totalItems} item(s)</div>
+        </div>`;
     }
 
     #renderFileActions(s) {
@@ -77,6 +99,7 @@ export class UtproFileManagerFooter extends UmbLitElement {
                             <div class="new-menu-item" @click=${() => this.#run(() => this.#context?.importUrl())}><uui-icon name="icon-globe"></uui-icon> Import file via URL</div>
                         </div>` : nothing}
                     </div>
+                    <uui-button look="outline" compact @click=${() => this.#context?.scan()} title="Scan media for unused, duplicate, broken and orphaned files"><uui-icon name="icon-search"></uui-icon> Scan Media</uui-button>
                     ${s.selectedCount ? html`<uui-button look="primary" color="danger" compact @click=${() => this.#context?.bulkAction('delete')}><uui-icon name="icon-trash"></uui-icon> Delete (${s.selectedCount})</uui-button>` : nothing}
                     ${s.hasSelectedZips ? html`<uui-button look="primary" compact @click=${() => this.#context?.bulkAction('extract-zip')}><uui-icon name="icon-zip"></uui-icon> Extract Zip</uui-button>` : nothing}
                 ` : nothing}

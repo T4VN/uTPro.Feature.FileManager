@@ -25,6 +25,7 @@ namespace uTPro.Feature.FileManager.Controllers;
 [Authorize(Policy = AuthorizationPolicies.SectionAccessSettings)]
 public class FileManagerApiController(
     IFileManagerService fileManager,
+    IMediaScanService mediaScan,
     IBackOfficeSecurityAccessor backOfficeSecurityAccessor,
     IOptions<FileManagerOptions> fileManagerOptions) : ManagementApiControllerBase
 {
@@ -129,6 +130,16 @@ public class FileManagerApiController(
         if (!IsAdmin() && !HasSensitiveData())
             return Unauthorized(new { error = "Sensitive Data access required to edit files." });
         try { fileManager.SaveFileContent(ResolvePath(request.Path), request.Content); return Ok(new { success = true }); }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    // ── Media Cleanup scan (Admin only) ──────────────────
+
+    [HttpPost("scan-media")]
+    public async Task<IActionResult> ScanMedia()
+    {
+        if (!IsAdmin()) return Unauthorized(new { error = "Admin access required." });
+        try { return Ok(await mediaScan.ScanAsync()); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 

@@ -12,6 +12,7 @@ internal class FileManagerComposer : IComposer
         // Registers IHttpClientFactory (used by ImportFromUrl to avoid socket exhaustion).
         builder.Services.AddHttpClient();
         builder.Services.AddScoped<IFileManagerService, FileManagerService>();
+        builder.Services.AddScoped<IMediaScanService, MediaScanService>();
 
         // Bind configurable upload limits from uTPro:Feature:FileManager.
         builder.Services.Configure<FileManagerOptions>(builder.Config.GetSection(FileManagerOptions.SectionPath));

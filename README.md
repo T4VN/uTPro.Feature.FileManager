@@ -47,6 +47,18 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 - PDF viewer via embedded iframe
 - Correct MIME types for inline rendering
 
+### Media Cleanup (v3.0.0)
+- **Scan Media** button in the File Manager footer runs a full media-library scan and switches the list into a report-only "scan mode"
+- Reports media across five categories, each with a live count and its own filter tab:
+  - **Unused media** — media items that no content/entity references (best-effort via Umbraco tracked references)
+  - **Broken media** — media items whose backing file is missing on disk/storage
+  - **Duplicates** — media items whose files share the same SHA-256 content hash
+  - **Orphaned files** — files in the media file system not referenced by any media item
+  - **Large files** — files at or above a configurable size threshold (default 100 MB), sorted largest first
+- Scan mode reuses the same paginated list ("Load more", 100 per page); the top bar Home button (or Exit in the footer) returns to normal File Manager
+- Uses Umbraco's media file system abstraction, so it works with any storage provider (physical disk, Azure Blob, S3, …)
+- **Admin only**, and **report-only** — no destructive actions are performed. Treat "Unused" as a suggestion, since references made only in free-form markup (rich text, templates, CSS/JS) may not be tracked
+
 ### Security & Permissions
 - **Settings section access** required to view the dashboard
 - **Admin** — full access: browse entire server root (ContentRootPath), create, edit, rename, delete, upload, extract
@@ -80,7 +92,8 @@ No configuration is required — the package ships with safe defaults. To custom
       "FileManager": {
         "MaxUploadSizeMB": 50,
         "AllowedUploadExtensions": [],
-        "BlockedUploadExtensions": [ ".exe", ".dll", ".bat" ]
+        "BlockedUploadExtensions": [ ".exe", ".dll", ".bat" ],
+        "MediaLargeFileThresholdMB": 100
       }
     }
   }
@@ -92,17 +105,17 @@ No configuration is required — the package ships with safe defaults. To custom
 | `MaxUploadSizeMB` | `50` | Maximum allowed upload size in megabytes. Enforced on both file upload and import-from-URL. |
 | `AllowedUploadExtensions` | `[]` (allow all) | Allow-list of file extensions. When non-empty, only these extensions may be uploaded. Entries are case-insensitive and may be written with or without a leading dot (`".zip"` or `"zip"`). |
 | `BlockedUploadExtensions` | `[]` | Block-list of file extensions. These are always rejected, even if present in the allow-list. |
+| `MediaLargeFileThresholdMB` | `100` | Media Cleanup: files at or above this size (MB) are reported under the **Large files** category. |
 
-> The limits apply to write operations only and are enforced server-side, independent of any client-side checks.
+> The upload limits apply to write operations only and are enforced server-side, independent of any client-side checks.
 
 ## Compatibility
 
 | Umbraco | .NET  | Package |
 |---------|-------|---------|
-| 16.x    | 9.0   | 1.x     |
-| 16.x    | 9.0   | 2.x     |
-| 17.x    | 10.0  | 2.x     |
-| 18.x    | 10.0  | 2.x     |
+| 16.x    | 9.0   | 1.x – 3.x |
+| 17.x    | 10.0  | 2.x – 3.x |
+| 18.x    | 10.0  | 2.x – 3.x |
 
 The package multi-targets `net9.0` (Umbraco 16) and `net10.0` (Umbraco 17 & 18); a single install picks the right build for your project automatically.
 
@@ -151,9 +164,14 @@ src/uTPro.Feature.FileManager/
 ├── Services/
 │   ├── IFileManagerService.cs         # Service interface
 │   ├── FileManagerService.cs          # File operations implementation
+│   ├── IMediaScanService.cs           # Media Cleanup scan interface
+│   ├── MediaScanService.cs            # Media Cleanup scan implementation
 │   └── FileManagerComposer.cs         # DI registration
 ├── Models/
 │   ├── FileItemViewModel.cs           # File/folder view model
+│   ├── FileManagerOptions.cs          # Configurable options (upload limits, large-file threshold)
+│   ├── MediaScanItem.cs               # Media Cleanup row view model
+│   ├── MediaScanResult.cs             # Media Cleanup scan result + counts
 │   ├── Requests.cs                    # API request DTOs
 │   └── Results.cs                     # API response DTOs
 └── wwwroot/
@@ -166,6 +184,12 @@ src/uTPro.Feature.FileManager/
 ```
 
 ## Changelog
+
+### 3.0.0
+- **Media Cleanup scan** — a new **Scan Media** action in the File Manager footer reports media across five categories, each with a live count and filter tab: **Unused media**, **Broken media**, **Duplicates**, **Orphaned files**, and **Large files**. Results reuse the paginated list ("Load more"), and Home/Exit returns to the normal File Manager.
+- **Configurable large-file threshold** via `uTPro:Feature:FileManager:MediaLargeFileThresholdMB` (default 100 MB). See [Configuration](#configuration).
+- Scanning goes through Umbraco's media file system abstraction, so it works with any storage provider (disk, Azure Blob, S3, …).
+- Admin only and **report-only** — no destructive actions. No breaking API changes to existing endpoints.
 
 ### 2.1.0
 - **Configurable upload limits** via the `uTPro:Feature:FileManager` section — `MaxUploadSizeMB`, an `AllowedUploadExtensions` allow-list, and a `BlockedUploadExtensions` block-list — enforced on both file upload and import-from-URL. See [Configuration](#configuration).

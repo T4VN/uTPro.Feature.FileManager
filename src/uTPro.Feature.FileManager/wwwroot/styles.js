@@ -18,6 +18,18 @@ export const dashboardStyles = css`
     .path-crumb.path-active:hover { background: none; }
     .path-sep { color: #aaa; font-size: .85rem; }
     .search-input { padding: 4px 10px; border: 1px solid var(--uui-color-border, #ccc); border-radius: 4px; font-size: .9rem; width: 180px; height: 34px; box-sizing: border-box; flex-shrink: 0; background: var(--uui-color-surface, #fff); color: var(--uui-color-text, #333); }
+
+    /* Space between the sticky navbar and the file table */
+    uui-table { margin-top: 10px; }
+
+    /* Media Cleanup scan mode */
+    .scan-badge { flex-shrink: 0; font-weight: 600; color: var(--uui-color-interactive, #1b264f); }
+    .scan-tag { display: inline-block; font-size: .75rem; padding: 2px 8px; border-radius: 10px; white-space: nowrap; background: var(--uui-color-surface-alt, #f0f0f0); color: #555; }
+    .scan-tag-broken { background: #fef2f2; color: #dc2626; }
+    .scan-tag-orphaned { background: #fff7ed; color: #c2410c; }
+    .scan-tag-unused { background: #fefce8; color: #a16207; }
+    .scan-tag-duplicate { background: #eff6ff; color: #1d4ed8; }
+    .scan-tag-large { background: #f5f3ff; color: #6d28d9; }
     .search-input:focus { outline: none; border-color: var(--uui-color-interactive, #1b264f); }
 
     /* Action bar */

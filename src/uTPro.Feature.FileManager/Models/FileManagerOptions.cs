@@ -11,6 +11,15 @@ public class FileManagerOptions
     /// <summary>Maximum allowed upload size in megabytes.</summary>
     public int MaxUploadSizeMB { get; set; } = 50;
 
+    /// <summary>
+    /// Media Cleanup: files at or above this size (in megabytes) are reported as "large files".
+    /// Defaults to 100 MB.
+    /// </summary>
+    public int MediaLargeFileThresholdMB { get; set; } = 100;
+
+    /// <summary>Media Cleanup large-file threshold in bytes.</summary>
+    public long MediaLargeFileThresholdBytes => (long)MediaLargeFileThresholdMB * 1024 * 1024;
+
     /// <summary>Allowed file extensions. Empty = allow all (subject to the block list).</summary>
     public string[] AllowedUploadExtensions { get; set; } = [];
 

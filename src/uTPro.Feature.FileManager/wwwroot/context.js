@@ -19,6 +19,10 @@ const DEFAULT_FOOTER_STATE = {
     hasSelectedZips: false,
     activeSize: 0,
     activeExt: '',
+    scanMode: false,
+    scanFilter: 'unused',
+    scanCounts: {},
+    scanThresholdMB: 0,
 };
 
 export class UtproFileManagerContext extends UmbControllerBase {
@@ -52,6 +56,11 @@ export class UtproFileManagerContext extends UmbControllerBase {
     download() { this.#activeView?.fmDownloadActive(); }
     rename() { this.#activeView?.fmRenameActive(); }
     deleteActive() { this.#activeView?.fmDeleteActive(); }
+
+    // ── Media Cleanup scan actions ──
+    scan() { this.#activeView?.fmScan(); }
+    exitScan() { this.#activeView?.fmExitScan(); }
+    setScanFilter(filter) { this.#activeView?.fmSetScanFilter(filter); }
 }
 
 export default UtproFileManagerContext;
