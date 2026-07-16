@@ -45,7 +45,7 @@ export class UtproFileManagerFooter extends UmbLitElement {
         const active = s.scanFilter || 'unused';
         const filterBtn = (key, label, count, title) => html`<uui-button
             look=${active === key ? 'primary' : 'outline'} color=${active === key ? 'positive' : 'default'} compact
-            title=${title || label} @click=${() => this.#context?.setScanFilter(key)}>${label} (${count || 0})</uui-button>`;
+            title=${title || label} @click=${() => this.#context?.refreshScanFilter(key)}>${label} (${count || 0})</uui-button>`;
         const largeTitle = s.scanThresholdMB ? `Files at or above ${s.scanThresholdMB} MB` : 'Large files';
         return html`<div class="footer">
             <div class="left">
@@ -55,9 +55,25 @@ export class UtproFileManagerFooter extends UmbLitElement {
                 ${filterBtn('duplicate', 'Duplicates', c.duplicate)}
                 ${filterBtn('orphaned', 'Orphaned files', c.orphaned)}
                 ${filterBtn('large', 'Large files', c.large, largeTitle)}
+                ${filterBtn('recycleBin', 'Recycle Bin', c.recycleBin, 'Media currently in the recycle bin')}
+                ${s.hasMediaAccess && active === 'recycleBin' && c.recycleBin ? html`<uui-button look="primary" color="danger" compact @click=${() => this.#context?.emptyRecycleBin()} title="Permanently delete everything in the recycle bin"><uui-icon name="icon-trash"></uui-icon> Empty recycle bin (${c.recycleBin})</uui-button>` : nothing}
+                ${s.hasMediaAccess && active === 'duplicate' && c.duplicate ? html`<uui-button look="primary" compact @click=${() => this.#context?.recycleDuplicatesKeepOne()} title="Recycle every duplicate except one per group"><uui-icon name="icon-documents"></uui-icon> Recycle dupes (keep 1)</uui-button>` : nothing}
+                ${this.#renderBulkActions(s, active)}
             </div>
             <div class="file-status">Showing ${s.itemsLength} of ${s.totalItems} item(s)</div>
         </div>`;
+    }
+
+    #renderBulkActions(s, active) {
+        const n = s.scanSelectedCount || 0;
+        if (!s.hasMediaAccess || n === 0) return nothing;
+        if (active === 'recycleBin') {
+            return html`
+                <uui-button look="primary" color="positive" compact @click=${() => this.#context?.bulkScan('restore')}><uui-icon name="icon-undo"></uui-icon> Restore (${n})</uui-button>
+                <uui-button look="primary" color="danger" compact @click=${() => this.#context?.bulkScan('delete')}><uui-icon name="icon-trash"></uui-icon> Delete (${n})</uui-button>`;
+        }
+        const label = active === 'orphaned' ? `Delete (${n})` : `Recycle (${n})`;
+        return html`<uui-button look="primary" color="danger" compact @click=${() => this.#context?.bulkScan('cleanup')}><uui-icon name="icon-trash"></uui-icon> ${label}</uui-button>`;
     }
 
     #renderFileActions(s) {
@@ -99,10 +115,10 @@ export class UtproFileManagerFooter extends UmbLitElement {
                             <div class="new-menu-item" @click=${() => this.#run(() => this.#context?.importUrl())}><uui-icon name="icon-globe"></uui-icon> Import file via URL</div>
                         </div>` : nothing}
                     </div>
-                    <uui-button look="outline" compact @click=${() => this.#context?.scan()} title="Scan media for unused, duplicate, broken and orphaned files"><uui-icon name="icon-search"></uui-icon> Scan Media</uui-button>
                     ${s.selectedCount ? html`<uui-button look="primary" color="danger" compact @click=${() => this.#context?.bulkAction('delete')}><uui-icon name="icon-trash"></uui-icon> Delete (${s.selectedCount})</uui-button>` : nothing}
                     ${s.hasSelectedZips ? html`<uui-button look="primary" compact @click=${() => this.#context?.bulkAction('extract-zip')}><uui-icon name="icon-zip"></uui-icon> Extract Zip</uui-button>` : nothing}
                 ` : nothing}
+                <uui-button look="outline" compact @click=${() => this.#context?.scan()} title="Scan media for unused, duplicate, broken and orphaned files"><uui-icon name="icon-search"></uui-icon> Scan Media</uui-button>
             </div>
             ${s.totalItems ? html`<div class="file-status">Showing ${s.itemsLength} of ${s.totalItems} items</div>` : nothing}
         </div>`;

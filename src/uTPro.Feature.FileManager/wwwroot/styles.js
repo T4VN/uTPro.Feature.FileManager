@@ -30,6 +30,7 @@ export const dashboardStyles = css`
     .scan-tag-unused { background: #fefce8; color: #a16207; }
     .scan-tag-duplicate { background: #eff6ff; color: #1d4ed8; }
     .scan-tag-large { background: #f5f3ff; color: #6d28d9; }
+    .scan-tag-recyclebin { background: #f1f5f9; color: #475569; }
     .search-input:focus { outline: none; border-color: var(--uui-color-interactive, #1b264f); }
 
     /* Action bar */

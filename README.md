@@ -47,17 +47,26 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 - PDF viewer via embedded iframe
 - Correct MIME types for inline rendering
 
-### Media Cleanup (v3.0.0)
-- **Scan Media** button in the File Manager footer runs a full media-library scan and switches the list into a report-only "scan mode"
-- Reports media across five categories, each with a live count and its own filter tab:
+### Media Cleanup (v3.1.0)
+- **Scan Media** button in the File Manager footer runs a full media-library scan and switches the list into a dedicated "scan mode"
+- Reports media across six categories, each with a live count and its own filter tab. Clicking a tab re-runs the scan so counts always reflect the current state:
   - **Unused media** — media items that no content/entity references (best-effort via Umbraco tracked references)
   - **Broken media** — media items whose backing file is missing on disk/storage
   - **Duplicates** — media items whose files share the same SHA-256 content hash
   - **Orphaned files** — files in the media file system not referenced by any media item
   - **Large files** — files at or above a configurable size threshold (default 100 MB), sorted largest first
+  - **Recycle Bin** — media items currently in the Umbraco media recycle bin
+- **Actions per row** (require Media section access; Admins always qualify):
+  - Media-backed rows (Unused/Broken/Duplicates/Large) → **Move to recycle bin** (safe, recoverable; Umbraco handles permanent deletion + file cleanup when the bin is emptied)
+  - **Orphaned files** → **Delete file** directly from the media file system (no media node to recycle)
+  - **Recycle Bin** rows → **Restore** (back to the media root) or **Delete permanently**; plus an **Empty recycle bin** action for the whole bin
+- **Bulk actions** — tick rows to act on many at once (Recycle/Delete for the current category, or Restore/Delete for the Recycle Bin)
+- **Smart duplicates** — in the Duplicates tab, **Recycle dupes (keep 1)** recycles every copy except the first in each hash group
+- **Preview** — click an image/media row to preview it (streamed via the media file system) before deciding
+- **Cached scans** — results are cached briefly (default 30s, configurable) so switching tabs is fast; a forced reload or any action re-scans
 - Scan mode reuses the same paginated list ("Load more", 100 per page); the top bar Home button (or Exit in the footer) returns to normal File Manager
 - Uses Umbraco's media file system abstraction, so it works with any storage provider (physical disk, Azure Blob, S3, …)
-- **Admin only**, and **report-only** — no destructive actions are performed. Treat "Unused" as a suggestion, since references made only in free-form markup (rich text, templates, CSS/JS) may not be tracked
+- **Scanning (the report) is visible to any Settings user; actions are gated on the current user's Media permission.** Treat "Unused" as a suggestion, since references made only in free-form markup (rich text, templates, CSS/JS) may not be tracked — recycling is preferred over permanent deletion so items stay recoverable
 
 ### Security & Permissions
 - **Settings section access** required to view the dashboard
@@ -65,6 +74,7 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 - **Settings (non-admin)** — browse `wwwroot/` tree only (view folder structure, check if files exist — no file actions)
 - **Settings + Sensitive Data** — browse `wwwroot/` + view/edit/download file content
 - **Write operations** (create, rename, delete, upload, extract ZIP, import URL) — Admin only
+- **Media Cleanup** — the scan report is visible to any Settings user; its destructive actions (recycle/restore/delete/empty/delete-orphan) require **Media section access** (Admins always qualify)
 - Non-admin users are jailed to `wwwroot/` — cannot access `appsettings.json`, `web.config`, or any files outside `wwwroot`
 - Protected files: `web.config`, `appsettings.json`, `appsettings.development.json` cannot be modified or deleted
 - Path traversal protection on all endpoints
@@ -93,7 +103,8 @@ No configuration is required — the package ships with safe defaults. To custom
         "MaxUploadSizeMB": 50,
         "AllowedUploadExtensions": [],
         "BlockedUploadExtensions": [ ".exe", ".dll", ".bat" ],
-        "MediaLargeFileThresholdMB": 100
+        "MediaLargeFileThresholdMB": 100,
+        "MediaScanCacheSeconds": 30
       }
     }
   }
@@ -106,6 +117,7 @@ No configuration is required — the package ships with safe defaults. To custom
 | `AllowedUploadExtensions` | `[]` (allow all) | Allow-list of file extensions. When non-empty, only these extensions may be uploaded. Entries are case-insensitive and may be written with or without a leading dot (`".zip"` or `"zip"`). |
 | `BlockedUploadExtensions` | `[]` | Block-list of file extensions. These are always rejected, even if present in the allow-list. |
 | `MediaLargeFileThresholdMB` | `100` | Media Cleanup: files at or above this size (MB) are reported under the **Large files** category. |
+| `MediaScanCacheSeconds` | `30` | Media Cleanup: how long a scan result is cached so repeated tab switches don't re-scan the whole library. A forced reload or any cleanup action clears the cache. Set to `0` to disable caching. |
 
 > The upload limits apply to write operations only and are enforced server-side, independent of any client-side checks.
 
@@ -169,11 +181,13 @@ src/uTPro.Feature.FileManager/
 │   └── FileManagerComposer.cs         # DI registration
 ├── Models/
 │   ├── FileItemViewModel.cs           # File/folder view model
-│   ├── FileManagerOptions.cs          # Configurable options (upload limits, large-file threshold)
+│   ├── FileManagerOptions.cs          # Configurable options (upload limits, large-file threshold, scan cache)
 │   ├── MediaScanItem.cs               # Media Cleanup row view model
 │   ├── MediaScanResult.cs             # Media Cleanup scan result + counts
-│   ├── Requests.cs                    # API request DTOs
-│   └── Results.cs                     # API response DTOs
+│   ├── MediaActionRequest.cs          # Recycle/restore/delete/delete-orphan request
+│   ├── MediaActionResult.cs           # Cleanup action outcome (success + message)
+│   ├── MediaFileContent.cs            # Raw bytes for media preview
+│   └── ...                            # Browse/rename/create/upload request + result DTOs
 └── wwwroot/
     ├── index.js                       # Main Lit Element dashboard view
     ├── footer.js                      # Workspace footer app (New/Save/Actions/bulk + item count)
@@ -184,6 +198,14 @@ src/uTPro.Feature.FileManager/
 ```
 
 ## Changelog
+
+### 3.1.0
+- **Media Cleanup actions** — the scan is no longer report-only. Each row now has actions: media-backed rows can be **moved to the recycle bin**, **orphaned files** can be **deleted** from the media file system, and a new **Recycle Bin** category lets you **Restore**, **Delete permanently**, or **Empty recycle bin**.
+- **Permissions** — the scan report is visible to any Settings user, while the destructive actions (recycle/restore/delete/empty) require the current user to have **Media section access** (Admins always qualify).
+- **Bulk actions** (row checkboxes), **Smart duplicates** ("keep 1 per group"), inline **media preview**, and **cached scans** (`MediaScanCacheSeconds`, default 30s) for fast tab switching.
+- **Recycle Bin** added as a sixth scan category (after Large files).
+- **Auto-refresh on tab click** — switching category tabs re-runs the scan so counts stay current.
+- Media lookups now resolve by key via `IIdKeyMap` + `GetById(int)` for compatibility across Umbraco 16/17/18 (Umbraco 18 removed `IMediaService.GetById(Guid)` from the interface). No breaking API changes to existing endpoints.
 
 ### 3.0.0
 - **Media Cleanup scan** — a new **Scan Media** action in the File Manager footer reports media across five categories, each with a live count and filter tab: **Unused media**, **Broken media**, **Duplicates**, **Orphaned files**, and **Large files**. Results reuse the paginated list ("Load more"), and Home/Exit returns to the normal File Manager.

@@ -17,6 +17,13 @@ public class FileManagerOptions
     /// </summary>
     public int MediaLargeFileThresholdMB { get; set; } = 100;
 
+    /// <summary>
+    /// Media Cleanup: how long (in seconds) a scan result is cached so repeated tab switches
+    /// don't re-scan the whole library. A forced reload (or any cleanup action) bypasses/clears
+    /// the cache. Set to 0 to disable caching. Defaults to 30 seconds.
+    /// </summary>
+    public int MediaScanCacheSeconds { get; set; } = 30;
+
     /// <summary>Media Cleanup large-file threshold in bytes.</summary>
     public long MediaLargeFileThresholdBytes => (long)MediaLargeFileThresholdMB * 1024 * 1024;
 

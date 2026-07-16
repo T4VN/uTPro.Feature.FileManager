@@ -10,6 +10,7 @@ export const UTPRO_FILEMANAGER_CONTEXT = new UmbContextToken('Utpro.FileManager.
 
 const DEFAULT_FOOTER_STATE = {
     isAdmin: false,
+    hasMediaAccess: false,
     viewing: false,
     isEdit: false,
     isDirty: false,
@@ -23,6 +24,7 @@ const DEFAULT_FOOTER_STATE = {
     scanFilter: 'unused',
     scanCounts: {},
     scanThresholdMB: 0,
+    scanSelectedCount: 0,
 };
 
 export class UtproFileManagerContext extends UmbControllerBase {
@@ -61,6 +63,10 @@ export class UtproFileManagerContext extends UmbControllerBase {
     scan() { this.#activeView?.fmScan(); }
     exitScan() { this.#activeView?.fmExitScan(); }
     setScanFilter(filter) { this.#activeView?.fmSetScanFilter(filter); }
+    refreshScanFilter(filter) { this.#activeView?.fmRefreshScanFilter(filter); }
+    emptyRecycleBin() { this.#activeView?.fmEmptyRecycleBin(); }
+    bulkScan(action) { this.#activeView?.fmBulkScan(action); }
+    recycleDuplicatesKeepOne() { this.#activeView?.fmRecycleDuplicates(); }
 }
 
 export default UtproFileManagerContext;

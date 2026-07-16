@@ -21,6 +21,9 @@ public class MediaScanResult
     /// <summary>Files at or above the configured large-file threshold, largest first.</summary>
     public IEnumerable<MediaScanItem> Large { get; set; } = [];
 
+    /// <summary>Media items currently in the Umbraco media recycle bin (trashed).</summary>
+    public IEnumerable<MediaScanItem> RecycleBin { get; set; } = [];
+
     /// <summary>The configured large-file threshold (MB) that produced the <see cref="Large"/> list.</summary>
     public int LargeThresholdMB { get; set; }
 
@@ -34,4 +37,5 @@ public class MediaScanCounts
     public int Duplicate { get; set; }
     public int Orphaned { get; set; }
     public int Large { get; set; }
+    public int RecycleBin { get; set; }
 }

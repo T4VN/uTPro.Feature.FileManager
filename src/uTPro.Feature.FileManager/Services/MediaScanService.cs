@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Umbraco.Cms.Core;
 using Umbraco.Cms.Core.IO;
@@ -29,12 +30,32 @@ internal class MediaScanService(
     MediaFileManager mediaFileManager,
     MediaUrlGeneratorCollection mediaUrlGenerators,
     ITrackedReferencesService trackedReferencesService,
+    IIdKeyMap idKeyMap,
+    IMemoryCache cache,
     Microsoft.Extensions.Options.IOptions<FileManagerOptions> options,
     ILogger<MediaScanService> logger) : IMediaScanService
 {
     private const int MediaPageSize = 500;
+    private const string ScanCacheKey = "uTPro.FileManager.MediaScan";
 
-    public async Task<MediaScanResult> ScanAsync()
+    /// <summary>Drops any cached scan result so the next scan re-reads the library.</summary>
+    private void InvalidateScanCache() => cache.Remove(ScanCacheKey);
+
+    public async Task<MediaScanResult> ScanAsync(bool force = false)
+    {
+        var ttl = options.Value.MediaScanCacheSeconds;
+        if (!force && ttl > 0 && cache.TryGetValue(ScanCacheKey, out MediaScanResult? cached) && cached is not null)
+            return cached;
+
+        var result = await ScanCoreAsync();
+
+        if (ttl > 0)
+            cache.Set(ScanCacheKey, result, TimeSpan.FromSeconds(ttl));
+
+        return result;
+    }
+
+    private async Task<MediaScanResult> ScanCoreAsync()
     {
         var fs = mediaFileManager.FileSystem;
         var largeThresholdMB = options.Value.MediaLargeFileThresholdMB;
@@ -116,12 +137,13 @@ internal class MediaScanService(
             }
             list.Add(item);
         }
-        foreach (var group in hashGroups.Values.Where(v => v.Count > 1))
+        foreach (var kv in hashGroups.Where(v => v.Value.Count > 1))
         {
-            foreach (var it in group)
+            foreach (var it in kv.Value)
             {
                 var d = Clone(it, "duplicate");
-                d.Detail = $"Duplicate ({group.Count} copies)";
+                d.Detail = $"Duplicate ({kv.Value.Count} copies)";
+                d.Group = kv.Key;
                 duplicate.Add(d);
             }
         }
@@ -159,6 +181,30 @@ internal class MediaScanService(
             })
             .ToList();
 
+        // Recycle bin: media items currently trashed (separate tree from the live media above).
+        var recycleBin = new List<MediaScanItem>();
+        foreach (var media in GetMediaInRecycleBin())
+        {
+            if (string.Equals(media.ContentType.Alias, Constants.Conventions.MediaTypes.Folder, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var filePath = GetMediaFilePath(media);
+            var rel = filePath is not null ? NormalizeRelative(fs, filePath) : null;
+
+            recycleBin.Add(new MediaScanItem
+            {
+                Name = string.IsNullOrWhiteSpace(media.Name) ? "(unnamed)" : media.Name!,
+                Path = filePath ?? "",
+                Type = "file",
+                Size = rel is not null && SafeFileExists(fs, rel) ? SafeGetSize(fs, rel) : 0,
+                LastModified = media.UpdateDate,
+                Extension = filePath is not null ? Path.GetExtension(filePath).ToLowerInvariant() : "",
+                MediaKey = media.Key.ToString(),
+                Category = "recyclebin",
+                Detail = "In recycle bin"
+            });
+        }
+
         return new MediaScanResult
         {
             Unused = unused,
@@ -166,6 +212,7 @@ internal class MediaScanService(
             Duplicate = duplicate,
             Orphaned = orphaned,
             Large = large,
+            RecycleBin = recycleBin,
             LargeThresholdMB = largeThresholdMB,
             Counts = new MediaScanCounts
             {
@@ -173,9 +220,190 @@ internal class MediaScanService(
                 Broken = broken.Count,
                 Duplicate = duplicate.Count,
                 Orphaned = orphaned.Count,
-                Large = large.Count
+                Large = large.Count,
+                RecycleBin = recycleBin.Count
             }
         };
+    }
+
+    // ── Actions ──────────────────────────────────────────
+
+    public MediaActionResult RecycleMedia(Guid mediaKey, int userId)
+    {
+        InvalidateScanCache();
+        var media = GetMediaByKey(mediaKey);
+        if (media is null)
+            return MediaActionResult.Fail($"Media '{mediaKey}' was not found.");
+
+        if (media.Trashed)
+            return MediaActionResult.Ok($"'{media.Name}' is already in the recycle bin.");
+
+        try
+        {
+            var attempt = mediaService.MoveToRecycleBin(media, userId);
+            if (!attempt.Success)
+                return MediaActionResult.Fail($"Could not move '{media.Name}' to the recycle bin.");
+
+            return MediaActionResult.Ok($"'{media.Name}' moved to the recycle bin.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Media cleanup: failed to recycle media {Key}", mediaKey);
+            return MediaActionResult.Fail(ex.Message);
+        }
+    }
+
+    public MediaActionResult RestoreMedia(Guid mediaKey, int userId)
+    {
+        InvalidateScanCache();
+        var media = GetMediaByKey(mediaKey);
+        if (media is null)
+            return MediaActionResult.Fail($"Media '{mediaKey}' was not found.");
+
+        if (!media.Trashed)
+            return MediaActionResult.Ok($"'{media.Name}' is not in the recycle bin.");
+
+        try
+        {
+            // Restore to the media root (matches Umbraco's behaviour when the original parent is gone).
+            var attempt = mediaService.Move(media, Constants.System.Root, userId);
+            if (!attempt.Success)
+                return MediaActionResult.Fail($"Could not restore '{media.Name}'.");
+
+            return MediaActionResult.Ok($"'{media.Name}' was restored to the media root.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Media cleanup: failed to restore media {Key}", mediaKey);
+            return MediaActionResult.Fail(ex.Message);
+        }
+    }
+
+    public MediaActionResult DeleteMedia(Guid mediaKey, int userId)
+    {
+        InvalidateScanCache();
+        var media = GetMediaByKey(mediaKey);
+        if (media is null)
+            return MediaActionResult.Fail($"Media '{mediaKey}' was not found.");
+
+        try
+        {
+            var attempt = mediaService.Delete(media, userId);
+            if (!attempt.Success)
+                return MediaActionResult.Fail($"Could not delete '{media.Name}'.");
+
+            return MediaActionResult.Ok($"'{media.Name}' was permanently deleted.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Media cleanup: failed to delete media {Key}", mediaKey);
+            return MediaActionResult.Fail(ex.Message);
+        }
+    }
+
+    public MediaActionResult EmptyRecycleBin(int userId)
+    {
+        InvalidateScanCache();
+        try
+        {
+            var result = mediaService.EmptyRecycleBin(userId);
+            return result.Success
+                ? MediaActionResult.Ok("The media recycle bin was emptied.")
+                : MediaActionResult.Fail("Could not empty the media recycle bin.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Media cleanup: failed to empty the media recycle bin");
+            return MediaActionResult.Fail(ex.Message);
+        }
+    }
+
+    public MediaActionResult DeleteOrphanedFile(string relativePath)
+    {
+        InvalidateScanCache();
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return MediaActionResult.Fail("No file path was provided.");
+
+        var fs = mediaFileManager.FileSystem;
+        var rel = NormalizeRelative(fs, relativePath);
+
+        if (!SafeFileExists(fs, rel))
+            return MediaActionResult.Fail($"File '{rel}' was not found in the media file system.");
+
+        // Guard: never delete a file that is actually referenced by a media item. This
+        // protects against acting on a stale scan (files added/re-referenced since the scan).
+        if (IsFileReferenced(fs, rel))
+            return MediaActionResult.Fail($"'{rel}' is referenced by a media item and was not deleted. Re-scan and try again.");
+
+        try
+        {
+            fs.DeleteFile(rel);
+            return MediaActionResult.Ok($"Orphaned file '{Path.GetFileName(rel)}' was deleted.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Media cleanup: failed to delete orphaned file {Path}", rel);
+            return MediaActionResult.Fail(ex.Message);
+        }
+    }
+
+    public MediaFileContent? ReadMediaFile(string pathOrRelative)
+    {
+        if (string.IsNullOrWhiteSpace(pathOrRelative))
+            return null;
+
+        var fs = mediaFileManager.FileSystem;
+        var rel = NormalizeRelative(fs, pathOrRelative);
+        if (!SafeFileExists(fs, rel))
+            return null;
+
+        try
+        {
+            using var stream = fs.OpenFile(rel);
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            return new MediaFileContent
+            {
+                Bytes = ms.ToArray(),
+                FileName = Path.GetFileName(rel)
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Media cleanup: failed to read media file {Path}", rel);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Resolves a media item by its Guid key. Uses <see cref="IIdKeyMap"/> to map the key to
+    /// an integer id, then <c>GetById(int)</c> — this is stable across Umbraco 16/17/18, whereas
+    /// <c>IMediaService.GetById(Guid)</c> was removed from the interface in Umbraco 18.
+    /// </summary>
+    private Umbraco.Cms.Core.Models.IMedia? GetMediaByKey(Guid mediaKey)
+    {
+        var idAttempt = idKeyMap.GetIdForKey(mediaKey, UmbracoObjectTypes.Media);
+        return idAttempt.Success ? mediaService.GetById(idAttempt.Result) : null;
+    }
+
+    /// <summary>
+    /// Returns true if any (non-folder) media item currently references the given
+    /// media-file-system relative path.
+    /// </summary>
+    private bool IsFileReferenced(IFileSystem fs, string rel)
+    {
+        foreach (var media in GetAllMedia())
+        {
+            if (string.Equals(media.ContentType.Alias, Constants.Conventions.MediaTypes.Folder, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var filePath = GetMediaFilePath(media);
+            if (filePath is null) continue;
+
+            if (string.Equals(NormalizeRelative(fs, filePath), rel, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     // ── Media enumeration ────────────────────────────────
@@ -188,6 +416,24 @@ internal class MediaScanService(
         {
             var batch = mediaService
                 .GetPagedDescendants(Constants.System.Root, page, MediaPageSize, out total)
+                .ToList();
+
+            foreach (var media in batch)
+                yield return media;
+
+            page++;
+        }
+        while (page * MediaPageSize < total);
+    }
+
+    private IEnumerable<Umbraco.Cms.Core.Models.IMedia> GetMediaInRecycleBin()
+    {
+        long total;
+        var page = 0L;
+        do
+        {
+            var batch = mediaService
+                .GetPagedMediaInRecycleBin(page, MediaPageSize, out total)
                 .ToList();
 
             foreach (var media in batch)
@@ -293,6 +539,7 @@ internal class MediaScanService(
         Extension = source.Extension,
         IsEditable = source.IsEditable,
         MediaKey = source.MediaKey,
-        Category = category
+        Category = category,
+        Group = source.Group
     };
 }

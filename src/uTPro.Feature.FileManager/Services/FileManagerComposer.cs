@@ -11,6 +11,8 @@ internal class FileManagerComposer : IComposer
     {
         // Registers IHttpClientFactory (used by ImportFromUrl to avoid socket exhaustion).
         builder.Services.AddHttpClient();
+        // Ensures IMemoryCache is available for the Media Cleanup scan cache (idempotent).
+        builder.Services.AddMemoryCache();
         builder.Services.AddScoped<IFileManagerService, FileManagerService>();
         builder.Services.AddScoped<IMediaScanService, MediaScanService>();
 

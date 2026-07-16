@@ -15,9 +15,10 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         totalItems: { state: true }, currentPage: { state: true },
         totalPages: { state: true }, searchQuery: { state: true },
         previewFile: { state: true }, selectedPaths: { state: true },
-        isAdmin: { state: true }, showNewMenu: { state: true },
+        isAdmin: { state: true }, hasMediaAccess: { state: true }, showNewMenu: { state: true },
         activeFile: { state: true }, showActionsMenu: { state: true },
         scanMode: { state: true }, scanFilter: { state: true }, scanData: { state: true },
+        scanSelected: { state: true },
     };
     static styles = dashboardStyles;
 
@@ -34,9 +35,10 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             errorMessage: '', dragOver: false, isDirty: false,
             totalItems: 0, currentPage: 1, totalPages: 1,
             searchQuery: '', previewFile: null,
-            selectedPaths: new Set(), isAdmin: false,
+            selectedPaths: new Set(), isAdmin: false, hasMediaAccess: false,
             showNewMenu: false, activeFile: null, showActionsMenu: false,
             scanMode: false, scanFilter: 'unused', scanData: null,
+            scanSelected: new Set(),
         });
         this.consumeContext(UMB_AUTH_CONTEXT, (ctx) => { this.#authContext = ctx; });
         this.consumeContext(UTPRO_FILEMANAGER_CONTEXT, (ctx) => {
@@ -69,6 +71,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         const af = this.activeFile;
         this.#fmContext?.setFooterState({
             isAdmin: !!this.isAdmin,
+            hasMediaAccess: !!this.hasMediaAccess,
             viewing: !!(this.editingFile || this.previewFile),
             isEdit: !!this.editingFile,
             isDirty: !!this.isDirty,
@@ -82,6 +85,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             scanFilter: this.scanFilter,
             scanCounts: this.scanData?.counts || {},
             scanThresholdMB: this.scanData?.largeThresholdMB || 0,
+            scanSelectedCount: this.scanSelected?.size || 0,
         });
     }
 
@@ -93,26 +97,33 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     fmDownloadActive() { if (this.activeFile) this.downloadFile(this.activeFile); }
     fmRenameActive() { if (this.activeFile) this.renameItem(this.activeFile, true); }
     fmDeleteActive() { if (this.activeFile) this.deleteItem(this.activeFile, true); }
-    fmScan() { this.runScan(); }
+    fmScan() { this.runScan('unused', true); }
     fmExitScan() { this.exitScan(); }
     fmSetScanFilter(filter) { this.setScanFilter(filter); }
+    fmRefreshScanFilter(filter) { this.refreshScanFilter(filter); }
+    fmEmptyRecycleBin() { this.emptyRecycleBin(); }
+    fmBulkScan(action) { this.bulkScanAction(action); }
+    fmRecycleDuplicates() { this.recycleDuplicatesKeepOne(); }
 
     // ── Media Cleanup scan mode ──────────────────────────
 
-    async runScan() {
+    async runScan(targetFilter = 'unused', force = false) {
         if (!this.#confirmDiscard()) return;
         this.isLoading = true; this.errorMessage = '';
         this.editingFile = null; this.previewFile = null; this.activeFile = null;
-        this.isDirty = false; this.selectedPaths = new Set();
+        this.isDirty = false; this.selectedPaths = new Set(); this.scanSelected = new Set();
         try {
-            const d = await this.api('scan-media', {}, 'POST');
+            const d = await this.api(`scan-media${force ? '?force=true' : ''}`, {}, 'POST');
             this.scanData = d;
             this.scanMode = true;
             this.currentPath = '';
-            this.setScanFilter('unused');
+            this.setScanFilter(d[targetFilter] !== undefined ? targetFilter : 'unused');
         } catch (e) { this.showError(e.message); }
         this.isLoading = false; this.#syncUrl();
     }
+
+    /** Re-scan the media library and land on the requested filter. Uses the server cache (fast) unless forced. */
+    refreshScanFilter(filter) { return this.runScan(filter, false); }
 
     exitScan() {
         this.scanMode = false; this.scanData = null; this.scanFilter = 'all';
@@ -121,16 +132,174 @@ export class UtproFileManagerDashboard extends UmbLitElement {
 
     setScanFilter(filter) {
         if (!this.scanData) return;
-        const map = {
-            unused: this.scanData.unused, broken: this.scanData.broken, duplicate: this.scanData.duplicate,
-            orphaned: this.scanData.orphaned, large: this.scanData.large,
-        };
+        this.scanSelected = new Set();
         this.scanFilter = filter;
-        this.#scanFiltered = map[filter] || [];
+        this.#scanFiltered = this.#scanList(filter);
         this.totalItems = this.#scanFiltered.length;
         this.totalPages = Math.max(1, Math.ceil(this.totalItems / PAGE_SIZE));
         this.currentPage = 1;
         this.items = this.#scanFiltered.slice(0, PAGE_SIZE);
+    }
+
+    #scanList(filter) {
+        const d = this.scanData;
+        if (!d) return [];
+        return { unused: d.unused, broken: d.broken, duplicate: d.duplicate, orphaned: d.orphaned, large: d.large, recycleBin: d.recycleBin }[filter] || [];
+    }
+
+    // ── Scan result actions (media nodes & orphaned files) ─
+
+    /** Move a media-backed scan row to the recycle bin (safe, recoverable). */
+    async recycleMedia(item) {
+        if (!item.mediaKey) return;
+        if (!confirm(`Move "${item.name}" to the media recycle bin?`)) return;
+        // Move the row into the Recycle Bin category so counts stay consistent without a re-scan.
+        await this.#runScanAction('recycle-media', { mediaKey: item.mediaKey }, i => i.mediaKey === item.mediaKey, { ...item, category: 'recyclebin', detail: 'In recycle bin' });
+    }
+
+    /** Restore a trashed media item from the recycle bin back to the media root. */
+    async restoreMedia(item) {
+        if (!item.mediaKey) return;
+        if (!confirm(`Restore "${item.name}" from the recycle bin?`)) return;
+        await this.#runScanAction('restore-media', { mediaKey: item.mediaKey }, i => i.mediaKey === item.mediaKey);
+    }
+
+    /** Permanently delete a media item currently in the recycle bin. */
+    async deleteMedia(item) {
+        if (!item.mediaKey) return;
+        if (!confirm(`Permanently delete "${item.name}"? This cannot be undone.`)) return;
+        await this.#runScanAction('delete-media', { mediaKey: item.mediaKey }, i => i.mediaKey === item.mediaKey);
+    }
+
+    /** Permanently delete every media item in the recycle bin. */
+    async emptyRecycleBin() {
+        const count = this.scanData?.counts?.recycleBin || 0;
+        if (!count) return;
+        if (!confirm(`Empty the media recycle bin? This permanently deletes ${count} item(s) and cannot be undone.`)) return;
+        this.isLoading = true; this.errorMessage = '';
+        try {
+            await this.api('empty-recycle-bin', {}, 'POST');
+            this.#removeScanItems(i => i.category === 'recyclebin');
+        } catch (e) { this.showError(e.message); }
+        this.isLoading = false;
+    }
+
+    /** Delete an orphaned file directly from the media file system. */
+    async deleteOrphan(item) {
+        if (!confirm(`Delete orphaned file "${item.name}" from the media file system? This cannot be undone.`)) return;
+        await this.#runScanAction('delete-orphan', { path: item.path }, i => !i.mediaKey && i.path === item.path);
+    }
+
+    async #runScanAction(endpoint, body, matcher, moveToRecycleBin = null) {
+        this.isLoading = true; this.errorMessage = '';
+        try {
+            await this.api(endpoint, body, 'POST');
+            this.#removeScanItems(matcher, moveToRecycleBin);
+        } catch (e) { this.showError(e.message); }
+        this.isLoading = false;
+    }
+
+    // ── Bulk selection & actions ─────────────────────────
+
+    #scanRowId(item) { return item.mediaKey || `file:${item.path}`; }
+    #isScanSelected(item) { return this.scanSelected.has(this.#scanRowId(item)); }
+    #toggleScanSelect(item) {
+        const id = this.#scanRowId(item);
+        const s = new Set(this.scanSelected);
+        s.has(id) ? s.delete(id) : s.add(id);
+        this.scanSelected = s;
+    }
+    #toggleScanSelectAll() {
+        this.scanSelected = this.scanSelected.size === this.items.length && this.items.length > 0
+            ? new Set()
+            : new Set(this.items.map(i => this.#scanRowId(i)));
+    }
+
+    /**
+     * Bulk action over the selected scan rows.
+     *   action = 'restore'  → restore each media item from the recycle bin
+     *   action = 'delete'   → permanently delete each media item (recycle bin rows)
+     *   action = 'cleanup'  → recycle media-backed rows / delete orphaned files
+     */
+    async bulkScanAction(action) {
+        const selected = this.#scanFiltered.filter(i => this.#isScanSelected(i));
+        if (!selected.length) return;
+
+        const msg = action === 'restore'
+            ? `Restore ${selected.length} item(s) from the recycle bin?`
+            : action === 'delete'
+                ? `Permanently delete ${selected.length} item(s)? This cannot be undone.`
+                : `Clean up ${selected.length} selected item(s)? Media is moved to the recycle bin; orphaned files are deleted.`;
+        if (!confirm(msg)) return;
+
+        this.isLoading = true; this.errorMessage = '';
+        try {
+            for (const item of selected) {
+                if (action === 'restore') await this.api('restore-media', { mediaKey: item.mediaKey }, 'POST');
+                else if (action === 'delete') await this.api('delete-media', { mediaKey: item.mediaKey }, 'POST');
+                else if (item.mediaKey) await this.api('recycle-media', { mediaKey: item.mediaKey }, 'POST');
+                else await this.api('delete-orphan', { path: item.path }, 'POST');
+            }
+            this.scanSelected = new Set();
+            await this.runScan(this.scanFilter, true);
+        } catch (e) { this.showError(e.message); this.isLoading = false; }
+    }
+
+    /** Duplicates: keep the first file in each hash group, recycle the rest. */
+    async recycleDuplicatesKeepOne() {
+        const dups = (this.scanData?.duplicate || []).filter(i => i.mediaKey);
+        if (!dups.length) return;
+
+        const groups = new Map();
+        for (const it of dups) {
+            const g = it.group || it.path;
+            if (!groups.has(g)) groups.set(g, []);
+            groups.get(g).push(it);
+        }
+        const toRecycle = [];
+        for (const list of groups.values())
+            for (let i = 1; i < list.length; i++) toRecycle.push(list[i]);
+
+        if (!toRecycle.length) return;
+        if (!confirm(`Recycle ${toRecycle.length} duplicate file(s), keeping 1 per group? Kept copies are the first in each group.`)) return;
+
+        this.isLoading = true; this.errorMessage = '';
+        try {
+            for (const item of toRecycle) await this.api('recycle-media', { mediaKey: item.mediaKey }, 'POST');
+            await this.runScan('duplicate', true);
+        } catch (e) { this.showError(e.message); this.isLoading = false; }
+    }
+
+    /** Preview a media-backed or orphaned scan row (report rows are otherwise read-only). */
+    async previewScanItem(item) {
+        if (!isMedia(item.extension) || !item.path) return;
+        if (item.category === 'broken') return this.showError('File is missing — cannot preview.');
+        this.editingFile = null; this.activeFile = null;
+        const res = await this.#fetchAuth(`${API_BASE}/media-file?path=${encodeURIComponent(item.path)}&inline=true`);
+        if (!res.ok) { const j = await res.json().catch(() => ({})); return this.showError(j?.error || 'Preview failed'); }
+        const blob = await res.blob();
+        this.previewFile = { ...item, url: URL.createObjectURL(blob), type: blob.type, ext: item.extension };
+        this.activeFile = item;
+    }
+
+    /**
+     * Removes every scan row matching `matcher` from all categories, recomputes counts and
+     * re-applies the active filter. If `moveToRecycleBin` is supplied, that row is added to the
+     * Recycle Bin category (used when recycling a live media item).
+     */
+    #removeScanItems(matcher, moveToRecycleBin = null) {
+        if (!this.scanData) return;
+        const d = this.scanData;
+        for (const key of ['unused', 'broken', 'duplicate', 'orphaned', 'large', 'recycleBin']) {
+            d[key] = (d[key] || []).filter(i => !matcher(i));
+        }
+        if (moveToRecycleBin) d.recycleBin = [moveToRecycleBin, ...(d.recycleBin || [])];
+        d.counts = {
+            unused: d.unused.length, broken: d.broken.length, duplicate: d.duplicate.length,
+            orphaned: d.orphaned.length, large: d.large.length, recycleBin: (d.recycleBin || []).length,
+        };
+        this.scanData = { ...d };
+        this.setScanFilter(this.scanFilter);
     }
 
     // ── API & helpers ────────────────────────────────────
@@ -159,8 +328,9 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             const d = await this.api('permissions', {}, 'GET');
             this.isAdmin = d.isAdmin;
             this.hasSensitiveData = d.hasSensitiveData;
+            this.hasMediaAccess = d.hasMediaAccess;
         }
-        catch { this.isAdmin = false; this.hasSensitiveData = false; }
+        catch { this.isAdmin = false; this.hasSensitiveData = false; this.hasMediaAccess = false; }
     }
 
     #confirmDiscard() {
@@ -391,7 +561,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         const af = this.activeFile;
         return html`<div class="navbar">
             <div class="nav-buttons">
-                <button class="nav-btn ${this.scanMode ? 'disabled' : (this.#canGoBack || af ? '' : 'disabled')}" ?disabled=${this.scanMode} @click=${() => { if (this.scanMode) return; af ? this.closeFile() : this.goBack(); }} title="Back"><uui-icon name="icon-arrow-left"></uui-icon></button>
+                <button class="nav-btn ${(af || (!this.scanMode && this.#canGoBack)) ? '' : 'disabled'}" ?disabled=${!(af || (!this.scanMode && this.#canGoBack))} @click=${() => { if (af) { this.closeFile(); return; } if (this.scanMode) return; this.goBack(); }} title="Back"><uui-icon name="icon-arrow-left"></uui-icon></button>
                 <button class="nav-btn" @click=${() => this.scanMode ? this.runScan() : window.location.reload()} title="Reload"><uui-icon name="icon-refresh"></uui-icon></button>
                 <button class="nav-btn" @click=${() => { if (this.scanMode) { this.exitScan(); } else { this.closeFile(); this.browse(''); } }} title="Root"><uui-icon name="icon-home"></uui-icon></button>
             </div>
@@ -440,11 +610,12 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             <uui-table aria-label="Files">
                 <uui-table-head>
                     ${this.isAdmin && !this.scanMode ? html`<uui-table-head-cell class="check-cell"><input type="checkbox" .checked=${this.selectedPaths.size === this.items.length && this.items.length > 0} @change=${() => this.#toggleSelectAll()}></uui-table-head-cell>` : nothing}
+                    ${this.scanMode && this.hasMediaAccess ? html`<uui-table-head-cell class="check-cell"><input type="checkbox" .checked=${this.scanSelected.size === this.items.length && this.items.length > 0} @change=${() => this.#toggleScanSelectAll()}></uui-table-head-cell>` : nothing}
                     <uui-table-head-cell>Name</uui-table-head-cell>
                     ${this.scanMode ? html`<uui-table-head-cell class="date-cell">Status</uui-table-head-cell>` : nothing}
                     <uui-table-head-cell class="size-cell">Size</uui-table-head-cell>
                     <uui-table-head-cell class="date-cell">Date Modified</uui-table-head-cell>
-                    ${!this.scanMode ? html`<uui-table-head-cell class="actions-cell">Actions</uui-table-head-cell>` : nothing}
+                    ${!this.scanMode || this.hasMediaAccess ? html`<uui-table-head-cell class="actions-cell">Actions</uui-table-head-cell>` : nothing}
                 </uui-table-head>
                 ${this.items.map(item => this._renderRow(item))}
             </uui-table>
@@ -472,12 +643,31 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         const badge = item.detail || item.category || '';
         const modified = item.lastModified && new Date(item.lastModified).getFullYear() > 1
             ? new Date(item.lastModified).toLocaleString() : '';
-        return html`<uui-table-row>
-            <uui-table-cell><span class="file-name" title=${item.path}>${getIcon(item)} ${item.name}</span></uui-table-cell>
+        const canPreview = isMedia(item.extension) && item.path && item.category !== 'broken';
+        return html`<uui-table-row class="${this.#isScanSelected(item) ? 'selected' : ''}">
+            ${this.hasMediaAccess ? html`<uui-table-cell class="check-cell"><input type="checkbox" .checked=${this.#isScanSelected(item)} @change=${() => this.#toggleScanSelect(item)}></uui-table-cell>` : nothing}
+            <uui-table-cell><span class="file-name ${canPreview ? 'clickable' : ''}" title=${item.path} @click=${() => canPreview && this.previewScanItem(item)}>${getIcon(item)} ${item.name}</span></uui-table-cell>
             <uui-table-cell class="date-cell">${badge ? html`<span class="scan-tag scan-tag-${item.category}">${badge}</span>` : nothing}</uui-table-cell>
             <uui-table-cell class="size-cell">${formatSize(item.size)}</uui-table-cell>
             <uui-table-cell class="date-cell">${modified}</uui-table-cell>
+            ${this.hasMediaAccess ? html`<uui-table-cell class="actions-cell">${this._renderScanActions(item)}</uui-table-cell>` : nothing}
         </uui-table-row>`;
+    }
+
+    _renderScanActions(item) {
+        // Recycle Bin rows → restore (safe) or delete permanently, mirroring Umbraco's recycle bin.
+        if (item.category === 'recyclebin') {
+            return html`
+                <uui-button look="outline" compact @click=${() => this.restoreMedia(item)} title="Restore from recycle bin"><uui-icon name="icon-undo"></uui-icon></uui-button>
+                <uui-button look="outline" compact color="danger" @click=${() => this.deleteMedia(item)} title="Delete permanently"><uui-icon name="icon-trash"></uui-icon></uui-button>`;
+        }
+        // Media-backed rows carry a mediaKey → move to the media recycle bin (Umbraco handles
+        // permanent deletion + file cleanup when the recycle bin is emptied).
+        // Orphaned files have no mediaKey → delete directly from the media file system.
+        if (item.mediaKey) {
+            return html`<uui-button look="outline" compact @click=${() => this.recycleMedia(item)} title="Move to media recycle bin"><uui-icon name="icon-trash"></uui-icon></uui-button>`;
+        }
+        return html`<uui-button look="outline" compact color="danger" @click=${() => this.deleteOrphan(item)} title="Delete orphaned file"><uui-icon name="icon-trash"></uui-icon></uui-button>`;
     }
 }
 customElements.define('utpro-file-manager-dashboard', UtproFileManagerDashboard);

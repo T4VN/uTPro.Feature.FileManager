@@ -26,4 +26,7 @@ public class MediaScanItem
 
     /// <summary>Optional human-readable detail (e.g. missing file path, duplicate group).</summary>
     public string? Detail { get; set; }
+
+    /// <summary>For duplicate rows: identifies the group of identical files (content hash).</summary>
+    public string? Group { get; set; }
 }

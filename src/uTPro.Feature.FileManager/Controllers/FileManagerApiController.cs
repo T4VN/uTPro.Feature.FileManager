@@ -41,6 +41,17 @@ public class FileManagerApiController(
     private bool HasSensitiveData() => HasGroup("sensitiveData");
 
     /// <summary>
+    /// Whether the current user may act on media (recycle/restore/delete/empty). Admins always can;
+    /// otherwise the user must have access to the Media section — Umbraco's proxy for "can edit/remove media".
+    /// </summary>
+    private bool HasMediaAccess()
+    {
+        if (IsAdmin()) return true;
+        var user = backOfficeSecurityAccessor.BackOfficeSecurity?.CurrentUser;
+        return user?.AllowedSections.Contains(Constants.Applications.Media) == true;
+    }
+
+    /// <summary>
     /// Admin: path as-is (full server root).
     /// Non-admin: jailed to wwwroot.
     /// </summary>
@@ -75,7 +86,8 @@ public class FileManagerApiController(
     public IActionResult GetPermissions() => Ok(new
     {
         isAdmin = IsAdmin(),
-        hasSensitiveData = HasSensitiveData()
+        hasSensitiveData = HasSensitiveData(),
+        hasMediaAccess = HasMediaAccess()
     });
 
     // ── Browse (Settings access = tree only) ─────────────
@@ -135,12 +147,104 @@ public class FileManagerApiController(
 
     // ── Media Cleanup scan (Admin only) ──────────────────
 
+    // Scanning is read-only: available to any Settings user (report is visible to everyone).
     [HttpPost("scan-media")]
-    public async Task<IActionResult> ScanMedia()
+    public async Task<IActionResult> ScanMedia([FromQuery] bool force = false)
     {
-        if (!IsAdmin()) return Unauthorized(new { error = "Admin access required." });
-        try { return Ok(await mediaScan.ScanAsync()); }
+        try { return Ok(await mediaScan.ScanAsync(force)); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    // Streams a media file (media-backed or orphaned) from the media file system for preview.
+    [HttpGet("media-file")]
+    public IActionResult GetMediaFile([FromQuery] string path, [FromQuery] bool inline = true)
+    {
+        try
+        {
+            var content = mediaScan.ReadMediaFile(path);
+            if (content is null)
+                return NotFound(new { error = "Media file not found." });
+
+            var contentType = GetContentType(content.FileName);
+            return inline
+                ? File(content.Bytes, contentType)
+                : File(content.Bytes, contentType, content.FileName);
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    // Super-user id fallback (-1). These endpoints are Admin-only, so CurrentUser is
+    // effectively always present; the fallback just keeps the call non-null-dependent.
+    private const int SuperUserIdFallback = -1;
+
+    private int CurrentUserId() =>
+        backOfficeSecurityAccessor.BackOfficeSecurity?.CurrentUser?.Id ?? SuperUserIdFallback;
+
+    /// <summary>Moves a scanned media item to the recycle bin (safe, recoverable).</summary>
+    [HttpPost("recycle-media")]
+    public IActionResult RecycleMedia([FromBody] MediaActionRequest request)
+    {
+        if (!HasMediaAccess()) return Unauthorized(new { error = "Media access required." });
+        if (!Guid.TryParse(request.MediaKey, out var key))
+            return BadRequest(new { error = "A valid media key is required." });
+
+        var result = mediaScan.RecycleMedia(key, CurrentUserId());
+        return result.Success
+            ? Ok(new { success = true, message = result.Message })
+            : BadRequest(new { error = result.Message });
+    }
+
+    /// <summary>Restores a trashed media item from the recycle bin to the media root.</summary>
+    [HttpPost("restore-media")]
+    public IActionResult RestoreMedia([FromBody] MediaActionRequest request)
+    {
+        if (!HasMediaAccess()) return Unauthorized(new { error = "Media access required." });
+        if (!Guid.TryParse(request.MediaKey, out var key))
+            return BadRequest(new { error = "A valid media key is required." });
+
+        var result = mediaScan.RestoreMedia(key, CurrentUserId());
+        return result.Success
+            ? Ok(new { success = true, message = result.Message })
+            : BadRequest(new { error = result.Message });
+    }
+
+    /// <summary>Permanently deletes a media item (used for recycle bin rows).</summary>
+    [HttpPost("delete-media")]
+    public IActionResult DeleteMedia([FromBody] MediaActionRequest request)
+    {
+        if (!HasMediaAccess()) return Unauthorized(new { error = "Media access required." });
+        if (!Guid.TryParse(request.MediaKey, out var key))
+            return BadRequest(new { error = "A valid media key is required." });
+
+        var result = mediaScan.DeleteMedia(key, CurrentUserId());
+        return result.Success
+            ? Ok(new { success = true, message = result.Message })
+            : BadRequest(new { error = result.Message });
+    }
+
+    /// <summary>Permanently deletes every media item in the recycle bin.</summary>
+    [HttpPost("empty-recycle-bin")]
+    public IActionResult EmptyRecycleBin()
+    {
+        if (!HasMediaAccess()) return Unauthorized(new { error = "Media access required." });
+        var result = mediaScan.EmptyRecycleBin(CurrentUserId());
+        return result.Success
+            ? Ok(new { success = true, message = result.Message })
+            : BadRequest(new { error = result.Message });
+    }
+
+    /// <summary>Deletes an orphaned file from the media file system.</summary>
+    [HttpPost("delete-orphan")]
+    public IActionResult DeleteOrphan([FromBody] MediaActionRequest request)
+    {
+        if (!HasMediaAccess()) return Unauthorized(new { error = "Media access required." });
+        if (string.IsNullOrWhiteSpace(request.Path))
+            return BadRequest(new { error = "A file path is required." });
+
+        var result = mediaScan.DeleteOrphanedFile(request.Path);
+        return result.Success
+            ? Ok(new { success = true, message = result.Message })
+            : BadRequest(new { error = result.Message });
     }
 
     // ── Write operations (Admin only) ────────────────────
