@@ -40,27 +40,18 @@ export class UtproFileManagerFooter extends UmbLitElement {
         return s.viewing ? this.#renderFileActions(s) : this.#renderListActions(s);
     }
 
+    // Footer stays action-only (consistent with browse mode). Category navigation lives in the
+    // content-area cards + breadcrumb, so the footer holds just Exit + the current view's actions.
     #renderScanActions(s) {
         const c = s.scanCounts || {};
-        const active = s.scanFilter || 'unused';
-        const filterBtn = (key, label, count, title) => html`<uui-button
-            look=${active === key ? 'primary' : 'outline'} color=${active === key ? 'positive' : 'default'} compact
-            title=${title || label} @click=${() => this.#context?.refreshScanFilter(key)}>${label} (${count || 0})</uui-button>`;
-        const largeTitle = s.scanThresholdMB ? `Files at or above ${s.scanThresholdMB} MB` : 'Large files';
+        const active = s.scanFilter; // null = overview (cards)
         return html`<div class="footer">
             <div class="left">
-                <uui-button look="outline" compact @click=${() => this.#context?.exitScan()} title="Exit scan and return to File Manager"><uui-icon name="icon-home"></uui-icon> Exit</uui-button>
-                ${filterBtn('unused', 'Unused media', c.unused)}
-                ${filterBtn('broken', 'Broken media', c.broken)}
-                ${filterBtn('duplicate', 'Duplicates', c.duplicate)}
-                ${filterBtn('orphaned', 'Orphaned files', c.orphaned)}
-                ${filterBtn('large', 'Large files', c.large, largeTitle)}
-                ${filterBtn('recycleBin', 'Recycle Bin', c.recycleBin, 'Media currently in the recycle bin')}
-                ${s.hasMediaAccess && active === 'recycleBin' && c.recycleBin ? html`<uui-button look="primary" color="danger" compact @click=${() => this.#context?.emptyRecycleBin()} title="Permanently delete everything in the recycle bin"><uui-icon name="icon-trash"></uui-icon> Empty recycle bin (${c.recycleBin})</uui-button>` : nothing}
-                ${s.hasMediaAccess && active === 'duplicate' && c.duplicate ? html`<uui-button look="primary" compact @click=${() => this.#context?.recycleDuplicatesKeepOne()} title="Recycle every duplicate except one per group"><uui-icon name="icon-documents"></uui-icon> Recycle dupes (keep 1)</uui-button>` : nothing}
-                ${this.#renderBulkActions(s, active)}
+                ${active && s.hasMediaAccess && active === 'recycleBin' && c.recycleBin ? html`<uui-button look="primary" color="danger" compact @click=${() => this.#context?.emptyRecycleBin()} title="Permanently delete everything in the recycle bin"><uui-icon name="icon-trash"></uui-icon> Empty recycle bin (${c.recycleBin})</uui-button>` : nothing}
+                ${active && s.hasMediaAccess && active === 'duplicate' && c.duplicate ? html`<uui-button look="primary" compact @click=${() => this.#context?.recycleDuplicatesKeepOne()} title="Recycle every duplicate except one per group"><uui-icon name="icon-documents"></uui-icon> Recycle dupes (keep 1)</uui-button>` : nothing}
+                ${active ? this.#renderBulkActions(s, active) : nothing}
             </div>
-            <div class="file-status">Showing ${s.itemsLength} of ${s.totalItems} item(s)</div>
+            ${active ? html`<div class="file-status">Showing ${s.itemsLength} of ${s.totalItems} item(s)</div>` : nothing}
         </div>`;
     }
 
@@ -118,7 +109,6 @@ export class UtproFileManagerFooter extends UmbLitElement {
                     ${s.selectedCount ? html`<uui-button look="primary" color="danger" compact @click=${() => this.#context?.bulkAction('delete')}><uui-icon name="icon-trash"></uui-icon> Delete (${s.selectedCount})</uui-button>` : nothing}
                     ${s.hasSelectedZips ? html`<uui-button look="primary" compact @click=${() => this.#context?.bulkAction('extract-zip')}><uui-icon name="icon-zip"></uui-icon> Extract Zip</uui-button>` : nothing}
                 ` : nothing}
-                <uui-button look="outline" compact @click=${() => this.#context?.scan()} title="Scan media for unused, duplicate, broken and orphaned files"><uui-icon name="icon-search"></uui-icon> Scan Media</uui-button>
             </div>
             ${s.totalItems ? html`<div class="file-status">Showing ${s.itemsLength} of ${s.totalItems} items</div>` : nothing}
         </div>`;

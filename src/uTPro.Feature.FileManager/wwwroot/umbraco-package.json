@@ -1,7 +1,7 @@
 {
   "id": "utpro-file-manager",
-  "name": "uTPro File Manager",
-  "version": "3.0.0",
+  "name": "uTPro File Manager & Media Cleanup",
+  "version": "4.0.0",
   "extensions": [
     {
       "type": "menuItem",
@@ -45,14 +45,31 @@
     },
     {
       "type": "workspaceView",
-      "alias": "uTPro.FileManager.View",
-      "name": "File Manager View",
+      "alias": "uTPro.FileManager.View.Files",
+      "name": "File Manager Files View",
       "element": "/App_Plugins/utpro-file-manager/index.js",
-      "weight": 100,
+      "weight": 200,
       "meta": {
         "label": "File Manager",
         "pathname": "files",
-        "icon": "icon-folder"
+        "icon": "icon-folder",
+        "mode": "files"
+      },
+      "conditions": [
+        { "alias": "Umb.Condition.WorkspaceAlias", "match": "uTPro.FileManager.Workspace" }
+      ]
+    },
+    {
+      "type": "workspaceView",
+      "alias": "uTPro.FileManager.View.MediaCleanup",
+      "name": "File Manager Media Cleanup View",
+      "element": "/App_Plugins/utpro-file-manager/index.js",
+      "weight": 100,
+      "meta": {
+        "label": "Media Cleanup",
+        "pathname": "media-cleanup",
+        "icon": "icon-brush",
+        "mode": "media"
       },
       "conditions": [
         { "alias": "Umb.Condition.WorkspaceAlias", "match": "uTPro.FileManager.Workspace" }

@@ -27,7 +27,8 @@ public class FileManagerApiController(
     IFileManagerService fileManager,
     IMediaScanService mediaScan,
     IBackOfficeSecurityAccessor backOfficeSecurityAccessor,
-    IOptions<FileManagerOptions> fileManagerOptions) : ManagementApiControllerBase
+    IOptions<FileManagerOptions> fileManagerOptions,
+    IOptions<Umbraco.Cms.Core.Configuration.Models.ContentSettings> contentSettings) : ManagementApiControllerBase
 {
     private const string NonAdminRoot = "wwwroot";
 
@@ -307,7 +308,7 @@ public class FileManagerApiController(
             var options = fileManagerOptions.Value;
             if (file.Length > options.MaxUploadSizeBytes)
                 return BadRequest(new { error = $"File exceeds the maximum upload size of {options.MaxUploadSizeMB} MB." });
-            if (!options.IsExtensionAllowed(safeFileName))
+            if (!options.IsExtensionAllowed(safeFileName, contentSettings.Value.DisallowedUploadedFileExtensions, contentSettings.Value.AllowedUploadedFileExtensions))
             {
                 var ext = Path.GetExtension(safeFileName).ToLowerInvariant();
                 return BadRequest(new { error = $"File type '{ext}' is not allowed." });

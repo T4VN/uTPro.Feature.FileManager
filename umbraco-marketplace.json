@@ -1,8 +1,8 @@
 {
   "$schema": "https://marketplace.umbraco.com/umbraco-marketplace-schema.json",
   "Category": "Developer Tools",
-  "Title": "uTPro File Manager",
-  "Description": "A powerful file management dashboard for Umbraco 16+ backoffice. Browse, upload, download, edit (with Monaco code editor), preview media, rename, delete, extract ZIP, and import files via URL. Includes a Media Cleanup scan that reports unused, broken, duplicate, orphaned and large media files (configurable size threshold). Features Windows Explorer-style navigation, role-based access control (Admin/Sensitive Data/Media), pagination for large directories, and URL state persistence. Zero configuration required.",
+  "Title": "uTPro File Manager & Media Cleanup",
+  "Description": "A powerful File Manager and Media Cleanup toolkit for the Umbraco 16+ backoffice, on two workspace tabs. File Manager: browse, upload, download, edit (with Monaco code editor), preview media, rename, delete, extract ZIP, and import files via URL. Media Cleanup: an overview of cards per category — Unused, Broken, Duplicate, Orphaned, Large and Disallowed media plus the Recycle Bin — with one-click actions to recycle, restore, permanently delete, empty, or jump straight to the Media node. Features Windows Explorer-style navigation, role-based access control (Admin/Sensitive Data/Media), pagination for large directories, and URL state persistence. Zero configuration required.",
   "AuthorDetails": {
     "Name": "T4VN",
     "Url": "https://t4vn.com",
@@ -11,16 +11,12 @@
   },
   "Screenshots": [
     {
-      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Screenshot%202026-07-11%20095254.png",
-      "Caption": "Media Cleanup Mode - Scan file large"
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v4.0.0/FileManager.png",
+      "Caption": "File Manager tab (v4.0.0)"
     },
     {
-      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Screenshot%202026-07-11%20095242.png",
-      "Caption": "Media Cleanup Mode"
-    },
-    {
-      "ImageUrl":"https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Screenshot-UI2.0.0.png",
-      "Caption": "uTPro.Feature.FileManager - v2.0.0"
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v4.0.0/MediaCleanup.png",
+      "Caption": "Media Cleanup tab (v4.0.0)"
     },
     {
       "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Admin%20-%20Screenshot%202026-03-31%20122558.png",

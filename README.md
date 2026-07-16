@@ -1,6 +1,6 @@
-# uTPro.Feature.FileManager
+# uTPro File Manager & Media Cleanup for Umbraco
 
-A powerful file management dashboard for **Umbraco 16+** backoffice. Browse, upload, download, edit, preview, rename, and delete server files — all from within the Umbraco backoffice.
+A powerful **File Manager** and **Media Cleanup** toolkit for the **Umbraco 16+** backoffice, on two workspace tabs. Browse, upload, download, edit, preview, rename and delete server files — and scan the media library to recycle, restore or delete unused, broken, duplicate, orphaned, large and disallowed media, all from within the backoffice.
 
 [![NuGet](https://img.shields.io/nuget/v/uTPro.Feature.FileManager.svg)](https://www.nuget.org/packages/uTPro.Feature.FileManager)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/uTPro.Feature.FileManager.svg)](https://www.nuget.org/packages/uTPro.Feature.FileManager)
@@ -47,9 +47,9 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 - PDF viewer via embedded iframe
 - Correct MIME types for inline rendering
 
-### Media Cleanup (v3.1.0)
-- **Scan Media** button in the File Manager footer runs a full media-library scan and switches the list into a dedicated "scan mode"
-- Reports media across six categories, each with a live count and its own filter tab. Clicking a tab re-runs the scan so counts always reflect the current state:
+### Media Cleanup (v4.0.0)
+- Lives on its own **workspace tab** next to *File Manager* (Settings → File Manager → **Media Cleanup**). Opening the tab scans automatically and shows an **overview of cards** — one per category with a live count; click a card to drill into that category. A breadcrumb (`All categories › <Category>`) navigates back.
+- Reports media across seven categories, each with a live count:
   - **Unused media** — media items that no content/entity references (best-effort via Umbraco tracked references)
   - **Broken media** — media items whose backing file is missing on disk/storage
   - **Duplicates** — media items whose files share the same SHA-256 content hash
@@ -114,8 +114,8 @@ No configuration is required — the package ships with safe defaults. To custom
 | Key | Default | Description |
 |-----|---------|-------------|
 | `MaxUploadSizeMB` | `50` | Maximum allowed upload size in megabytes. Enforced on both file upload and import-from-URL. |
-| `AllowedUploadExtensions` | `[]` (allow all) | Allow-list of file extensions. When non-empty, only these extensions may be uploaded. Entries are case-insensitive and may be written with or without a leading dot (`".zip"` or `"zip"`). |
-| `BlockedUploadExtensions` | `[]` | Block-list of file extensions. These are always rejected, even if present in the allow-list. |
+| `AllowedUploadExtensions` | `[]` (allow all) | Allow-list of file extensions. When non-empty, only these may be uploaded — **unioned with Umbraco's `Content:AllowedUploadedFileExtensions`** (both widen what's permitted). Leave empty to allow all (so File Manager can still upload site files like css/js/cshtml); an empty value does **not** inherit Umbraco's media whitelist. Case-insensitive, dot optional. |
+| `BlockedUploadExtensions` | `[]` | Additional block-list of file extensions, always rejected. **Combined (union) with Umbraco's `Content:DisallowedUploadedFileExtensions`** — keep the shared web-dangerous list in Umbraco and use this only for File-Manager-specific extras (e.g. binaries like `.exe`/`.dll`). |
 | `MediaLargeFileThresholdMB` | `100` | Media Cleanup: files at or above this size (MB) are reported under the **Large files** category. |
 | `MediaScanCacheSeconds` | `30` | Media Cleanup: how long a scan result is cached so repeated tab switches don't re-scan the whole library. A forced reload or any cleanup action clears the cache. Set to `0` to disable caching. |
 
@@ -125,13 +125,21 @@ No configuration is required — the package ships with safe defaults. To custom
 
 | Umbraco | .NET  | Package |
 |---------|-------|---------|
-| 16.x    | 9.0   | 1.x – 3.x |
-| 17.x    | 10.0  | 2.x – 3.x |
-| 18.x    | 10.0  | 2.x – 3.x |
+| 16.x    | 9.0   | 1.x – 4.x |
+| 17.x    | 10.0  | 2.x – 4.x |
+| 18.x    | 10.0  | 2.x – 4.x |
 
 The package multi-targets `net9.0` (Umbraco 16) and `net10.0` (Umbraco 17 & 18); a single install picks the right build for your project automatically.
 
 ## Screenshots
+
+### v4.0.0 — Two workspace tabs: File Manager & Media Cleanup
+
+#### File Manager tab — browse, edit, upload, and manage server files
+![File Manager tab](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v4.0.0/FileManager.png)
+
+#### Media Cleanup tab — overview cards per category (Unused, Broken, Duplicates, Orphaned, Large, Disallowed, Recycle Bin); click a card to drill in and act
+![Media Cleanup tab](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v4.0.0/MediaCleanup.png)
 
 ### uTPro.Feature.FileManager - v2.0.0
 ![uTPro.Feature.FileManager v2.0.0](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Screenshot-UI2.0.0.png)
@@ -198,6 +206,17 @@ src/uTPro.Feature.FileManager/
 ```
 
 ## Changelog
+
+### 4.0.0
+- **Media Cleanup is now its own workspace tab** next to *File Manager* (no more "Scan Media" button / in-place mode toggle). Switch tabs to move between managing files and cleaning up media.
+- **Overview cards** — opening the Media Cleanup tab auto-scans and shows a card per category (Unused, Broken, Duplicates, Orphaned, Large, Disallowed, Recycle Bin) with live counts and severity colors. Click a card to drill in; a breadcrumb navigates back. Row actions and bulk actions stay in the footer (consistent with the Files tab).
+- **Jump to Media** — media-backed rows link to their node in the Media section (name link + action button), opening in a new tab. Especially handy for Broken media.
+- No breaking server API changes. Requires a backoffice hard-refresh after upgrade (new workspace manifest).
+
+### 3.1.1
+- **New "Disallowed" scan category** — physical media files whose extension is in Umbraco's `Content:DisallowedUploadedFileExtensions` (potential security risk), with recycle/delete actions.
+- **Ignore list** (`IgnoredMediaIds`) to silence false positives in Unused/Large; **scan guardrails** (`MediaScanMaxFiles`, `MediaScanTimeBudgetSeconds`) stop very large scans early with an on-screen notice.
+- **Upload validation unions with Umbraco** — `BlockedUploadExtensions` ∪ `Content:DisallowedUploadedFileExtensions` always reject; when `AllowedUploadExtensions` is set it unions with `Content:AllowedUploadedFileExtensions`. Empty allow-list = allow all (site files like css/js/cshtml still upload; Umbraco's media-only whitelist is not inherited when empty).
 
 ### 3.1.0
 - **Media Cleanup actions** — the scan is no longer report-only. Each row now has actions: media-backed rows can be **moved to the recycle bin**, **orphaned files** can be **deleted** from the media file system, and a new **Recycle Bin** category lets you **Restore**, **Delete permanently**, or **Empty recycle bin**.

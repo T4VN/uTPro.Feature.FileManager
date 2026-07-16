@@ -31,6 +31,24 @@ export const dashboardStyles = css`
     .scan-tag-duplicate { background: #eff6ff; color: #1d4ed8; }
     .scan-tag-large { background: #f5f3ff; color: #6d28d9; }
     .scan-tag-recyclebin { background: #f1f5f9; color: #475569; }
+    .scan-tag-disallowed { background: #fef2f2; color: #b91c1c; }
+    .scan-notice { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; padding: 8px 12px; border-radius: 6px; margin: 10px 0; font-size: .85rem; }
+    .scan-notice code { background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 3px; }
+
+    /* Media Cleanup overview cards */
+    .scan-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-top: 14px; }
+    .scan-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; border: 1px solid var(--uui-color-border, #e0e0e0); border-left-width: 4px; border-radius: 8px; background: var(--uui-color-surface, #fff); cursor: pointer; text-align: left; transition: box-shadow .15s, transform .15s; font: inherit; color: var(--uui-color-text, #333); }
+    .scan-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.1); transform: translateY(-1px); }
+    .scan-card uui-icon { font-size: 20px; opacity: .8; }
+    .scan-card-count { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+    .scan-card-label { font-size: .85rem; color: #666; }
+    .scan-card-empty { opacity: .55; }
+    .scan-card-empty:hover { box-shadow: none; transform: none; }
+    .scan-card-danger { border-left-color: #dc2626; }
+    .scan-card-warn   { border-left-color: #d97706; }
+    .scan-card-info   { border-left-color: #2563eb; }
+    .scan-card-purple { border-left-color: #7c3aed; }
+    .scan-card-muted  { border-left-color: #64748b; }
     .search-input:focus { outline: none; border-color: var(--uui-color-interactive, #1b264f); }
 
     /* Action bar */
@@ -57,9 +75,10 @@ export const dashboardStyles = css`
     .selected { background: var(--uui-color-surface-alt, #f0f4ff); }
     .size-cell { width: 90px; min-width: 90px; max-width: 90px; color: #888; font-size: .85rem; text-align: right; }
     .date-cell { width: 180px; min-width: 180px; max-width: 180px; color: #888; font-size: .85rem; }
-    .actions-cell { width: 120px; min-width: 120px; max-width: 120px; text-align: right; }
+    .actions-cell { width: 140px; min-width: 140px; max-width: 140px; text-align: right; }
     .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
     .file-name.clickable { cursor: pointer; color: var(--uui-color-interactive, #1b264f); }
+    .name-link-icon { font-size: 11px; opacity: .5; vertical-align: middle; }
     .file-name.clickable:hover { text-decoration: underline; }
     .load-more { text-align: center; padding: 16px; }
 

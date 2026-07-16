@@ -11,7 +11,8 @@ internal class FileManagerService(
     IWebHostEnvironment env,
     IHttpClientFactory httpClientFactory,
     ILogger<FileManagerService> logger,
-    IOptions<FileManagerOptions> fileManagerOptions) : IFileManagerService
+    IOptions<FileManagerOptions> fileManagerOptions,
+    IOptions<Umbraco.Cms.Core.Configuration.Models.ContentSettings> contentSettings) : IFileManagerService
 {
     private static readonly HashSet<string> EditableExtensions =
     [
@@ -187,7 +188,7 @@ internal class FileManagerService(
 
         var safeName = SanitizeName(fileName);
 
-        if (!options.IsExtensionAllowed(safeName))
+        if (!options.IsExtensionAllowed(safeName, contentSettings.Value.DisallowedUploadedFileExtensions, contentSettings.Value.AllowedUploadedFileExtensions))
             throw new InvalidOperationException($"File type not allowed: {ext}");
 
         var fullPath = Path.Combine(fullDir, safeName);

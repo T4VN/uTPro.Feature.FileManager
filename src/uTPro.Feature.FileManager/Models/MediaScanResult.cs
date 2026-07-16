@@ -24,8 +24,14 @@ public class MediaScanResult
     /// <summary>Media items currently in the Umbraco media recycle bin (trashed).</summary>
     public IEnumerable<MediaScanItem> RecycleBin { get; set; } = [];
 
+    /// <summary>Files whose extension is in Umbraco's DisallowedUploadedFileExtensions (potential security risk).</summary>
+    public IEnumerable<MediaScanItem> Disallowed { get; set; } = [];
+
     /// <summary>The configured large-file threshold (MB) that produced the <see cref="Large"/> list.</summary>
     public int LargeThresholdMB { get; set; }
+
+    /// <summary>True if the scan stopped early due to the configured file-count or time-budget limits.</summary>
+    public bool Truncated { get; set; }
 
     public MediaScanCounts Counts { get; set; } = new();
 }
@@ -38,4 +44,5 @@ public class MediaScanCounts
     public int Orphaned { get; set; }
     public int Large { get; set; }
     public int RecycleBin { get; set; }
+    public int Disallowed { get; set; }
 }

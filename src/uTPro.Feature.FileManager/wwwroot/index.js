@@ -6,6 +6,18 @@ import { API_BASE, PAGE_SIZE, isMedia, isImage, isVideo, isAudio, isPdf, formatS
 import { dashboardStyles } from './styles.js';
 import { UTPRO_FILEMANAGER_CONTEXT } from './context.js';
 
+// Media Cleanup categories — drives the overview cards and the scan breadcrumb label.
+const SCAN_CATS = [
+    { key: 'unused', label: 'Unused media', icon: 'icon-picture', tone: 'warn' },
+    { key: 'broken', label: 'Broken media', icon: 'icon-wrong', tone: 'danger' },
+    { key: 'duplicate', label: 'Duplicates', icon: 'icon-documents', tone: 'info' },
+    { key: 'orphaned', label: 'Orphaned files', icon: 'icon-unplug', tone: 'warn' },
+    { key: 'large', label: 'Large files', icon: 'icon-download-alt', tone: 'purple' },
+    { key: 'disallowed', label: 'Disallowed', icon: 'icon-alert', tone: 'danger' },
+    { key: 'recycleBin', label: 'Recycle Bin', icon: 'icon-trash', tone: 'muted' },
+];
+const SCAN_CAT_LABEL = (key) => SCAN_CATS.find(c => c.key === key)?.label || key;
+
 export class UtproFileManagerDashboard extends UmbLitElement {
     static properties = {
         currentPath: { state: true }, items: { state: true }, parentPath: { state: true },
@@ -18,7 +30,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         isAdmin: { state: true }, hasMediaAccess: { state: true }, showNewMenu: { state: true },
         activeFile: { state: true }, showActionsMenu: { state: true },
         scanMode: { state: true }, scanFilter: { state: true }, scanData: { state: true },
-        scanSelected: { state: true },
+        scanSelected: { state: true }, mediaMode: { state: true },
     };
     static styles = dashboardStyles;
 
@@ -37,8 +49,8 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             searchQuery: '', previewFile: null,
             selectedPaths: new Set(), isAdmin: false, hasMediaAccess: false,
             showNewMenu: false, activeFile: null, showActionsMenu: false,
-            scanMode: false, scanFilter: 'unused', scanData: null,
-            scanSelected: new Set(),
+            scanMode: false, scanFilter: null, scanData: null,
+            scanSelected: new Set(), mediaMode: false,
         });
         this.consumeContext(UMB_AUTH_CONTEXT, (ctx) => { this.#authContext = ctx; });
         this.consumeContext(UTPRO_FILEMANAGER_CONTEXT, (ctx) => {
@@ -50,7 +62,16 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     async connectedCallback() {
         super.connectedCallback();
         window.addEventListener('beforeunload', this.#beforeUnloadHandler);
+        // Two workspace tabs share this element; the manifest meta.mode tells us which one.
+        this.mediaMode = this.manifest?.meta?.mode === 'media';
         await this.#loadPermissions();
+
+        if (this.mediaMode) {
+            // Media Cleanup tab: auto-scan on open (server caches for a few seconds).
+            await this.runScan(null, false);
+            return;
+        }
+
         const p = new URLSearchParams(window.location.search);
         const initialPath = p.get('path') || '';
         const pages = parseInt(p.get('pages') || '1', 10);
@@ -97,17 +118,15 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     fmDownloadActive() { if (this.activeFile) this.downloadFile(this.activeFile); }
     fmRenameActive() { if (this.activeFile) this.renameItem(this.activeFile, true); }
     fmDeleteActive() { if (this.activeFile) this.deleteItem(this.activeFile, true); }
-    fmScan() { this.runScan('unused', true); }
+    fmScan() { this.runScan(null, true); }
     fmExitScan() { this.exitScan(); }
-    fmSetScanFilter(filter) { this.setScanFilter(filter); }
-    fmRefreshScanFilter(filter) { this.refreshScanFilter(filter); }
     fmEmptyRecycleBin() { this.emptyRecycleBin(); }
     fmBulkScan(action) { this.bulkScanAction(action); }
     fmRecycleDuplicates() { this.recycleDuplicatesKeepOne(); }
 
     // ── Media Cleanup scan mode ──────────────────────────
 
-    async runScan(targetFilter = 'unused', force = false) {
+    async runScan(targetFilter = null, force = false) {
         if (!this.#confirmDiscard()) return;
         this.isLoading = true; this.errorMessage = '';
         this.editingFile = null; this.previewFile = null; this.activeFile = null;
@@ -117,34 +136,42 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             this.scanData = d;
             this.scanMode = true;
             this.currentPath = '';
-            this.setScanFilter(d[targetFilter] !== undefined ? targetFilter : 'unused');
+            // null => land on the overview (cards); otherwise drill straight into a category.
+            this.setScanFilter(targetFilter && d[targetFilter] !== undefined ? targetFilter : null);
         } catch (e) { this.showError(e.message); }
         this.isLoading = false; this.#syncUrl();
     }
 
-    /** Re-scan the media library and land on the requested filter. Uses the server cache (fast) unless forced. */
-    refreshScanFilter(filter) { return this.runScan(filter, false); }
-
     exitScan() {
-        this.scanMode = false; this.scanData = null; this.scanFilter = 'all';
+        this.scanMode = false; this.scanData = null; this.scanFilter = null;
         this.browse('');
     }
 
+    /** Drill into a category (client-side from the last scan). Pass null to return to the overview. */
     setScanFilter(filter) {
         if (!this.scanData) return;
         this.scanSelected = new Set();
         this.scanFilter = filter;
+        if (!filter) {
+            // Overview: no list, cards are rendered instead.
+            this.#scanFiltered = [];
+            this.items = [];
+            this.totalItems = 0; this.totalPages = 1; this.currentPage = 1;
+            this.#syncUrl();
+            return;
+        }
         this.#scanFiltered = this.#scanList(filter);
         this.totalItems = this.#scanFiltered.length;
         this.totalPages = Math.max(1, Math.ceil(this.totalItems / PAGE_SIZE));
         this.currentPage = 1;
         this.items = this.#scanFiltered.slice(0, PAGE_SIZE);
+        this.#syncUrl();
     }
 
     #scanList(filter) {
         const d = this.scanData;
         if (!d) return [];
-        return { unused: d.unused, broken: d.broken, duplicate: d.duplicate, orphaned: d.orphaned, large: d.large, recycleBin: d.recycleBin }[filter] || [];
+        return { unused: d.unused, broken: d.broken, duplicate: d.duplicate, orphaned: d.orphaned, large: d.large, recycleBin: d.recycleBin, disallowed: d.disallowed }[filter] || [];
     }
 
     // ── Scan result actions (media nodes & orphaned files) ─
@@ -290,13 +317,14 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     #removeScanItems(matcher, moveToRecycleBin = null) {
         if (!this.scanData) return;
         const d = this.scanData;
-        for (const key of ['unused', 'broken', 'duplicate', 'orphaned', 'large', 'recycleBin']) {
+        for (const key of ['unused', 'broken', 'duplicate', 'orphaned', 'large', 'recycleBin', 'disallowed']) {
             d[key] = (d[key] || []).filter(i => !matcher(i));
         }
         if (moveToRecycleBin) d.recycleBin = [moveToRecycleBin, ...(d.recycleBin || [])];
         d.counts = {
             unused: d.unused.length, broken: d.broken.length, duplicate: d.duplicate.length,
             orphaned: d.orphaned.length, large: d.large.length, recycleBin: (d.recycleBin || []).length,
+            disallowed: (d.disallowed || []).length,
         };
         this.scanData = { ...d };
         this.setScanFilter(this.scanFilter);
@@ -339,6 +367,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     showError(msg) { this.errorMessage = msg; setTimeout(() => { this.errorMessage = ''; }, 5000); }
 
     #syncUrl() {
+        if (this.mediaMode) return; // media tab owns its own route; don't touch query string
         const u = new URL(window.location);
         this.currentPath ? u.searchParams.set('path', this.currentPath) : u.searchParams.delete('path');
         this.currentPage > 1 ? u.searchParams.set('pages', String(this.currentPage)) : u.searchParams.delete('pages');
@@ -550,7 +579,8 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             ${isEdit ? this._renderEditorContent() : this._renderPreviewContent()}
             ${!viewing ? html`
                 ${this.errorMessage ? html`<div class="error">${this.errorMessage}</div>` : nothing}
-                ${this.isLoading ? html`<div class="center"><uui-loader></uui-loader></div>` : this._renderFileList()}
+                ${this.isLoading ? html`<div class="center"><uui-loader></uui-loader></div>`
+                    : (this.scanMode && !this.scanFilter ? this._renderScanOverview() : this._renderFileList())}
             `: nothing}
             ${this.isAdmin ? html`<input type="file" id="fileUpload" multiple style="display:none" @change=${(e) => { if (e.target.files.length) { const f = Array.from(e.target.files); e.target.value = ''; this.uploadFiles(f); } }}>` : nothing}
         </div>`;
@@ -559,21 +589,64 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     _renderNavBar() {
         const parts = this.currentPath ? this.currentPath.split('/') : [];
         const af = this.activeFile;
+        // Back is enabled when: a file is open, or (scan) drilled into a category, or (browse) not at root.
+        const scanBack = this.scanMode && !!this.scanFilter;
+        const canBack = af || scanBack || (!this.scanMode && this.#canGoBack);
+        const back = () => {
+            if (af) { this.closeFile(); return; }
+            if (scanBack) { this.setScanFilter(null); return; }
+            if (this.scanMode) return;
+            this.goBack();
+        };
         return html`<div class="navbar">
             <div class="nav-buttons">
-                <button class="nav-btn ${(af || (!this.scanMode && this.#canGoBack)) ? '' : 'disabled'}" ?disabled=${!(af || (!this.scanMode && this.#canGoBack))} @click=${() => { if (af) { this.closeFile(); return; } if (this.scanMode) return; this.goBack(); }} title="Back"><uui-icon name="icon-arrow-left"></uui-icon></button>
-                <button class="nav-btn" @click=${() => this.scanMode ? this.runScan() : window.location.reload()} title="Reload"><uui-icon name="icon-refresh"></uui-icon></button>
-                <button class="nav-btn" @click=${() => { if (this.scanMode) { this.exitScan(); } else { this.closeFile(); this.browse(''); } }} title="Root"><uui-icon name="icon-home"></uui-icon></button>
+                <button class="nav-btn ${canBack ? '' : 'disabled'}" ?disabled=${!canBack} @click=${back} title="Back"><uui-icon name="icon-arrow-left"></uui-icon></button>
+                <button class="nav-btn" @click=${() => this.scanMode ? this.runScan(this.scanFilter, true) : window.location.reload()} title="Reload"><uui-icon name="icon-refresh"></uui-icon></button>
+                ${this.mediaMode ? nothing : html`<button class="nav-btn" @click=${() => { this.closeFile(); this.browse(''); }} title="Root"><uui-icon name="icon-home"></uui-icon></button>`}
             </div>
             <div class="path-bar">
-                <span class="path-crumb" @click=${() => { this.closeFile(); this.browse(''); }}>root</span>
-                ${parts.map((part, i) => { const p = parts.slice(0, i + 1).join('/'); return html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb" @click=${() => { this.closeFile(); this.browse(p); }}>${part}</span>`; })}
-                ${af ? html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb path-active">${af.name}</span>` : nothing}
+                ${this.scanMode ? this._renderScanCrumbs() : html`
+                    <span class="path-crumb" @click=${() => { this.closeFile(); this.browse(''); }}>root</span>
+                    ${parts.map((part, i) => { const p = parts.slice(0, i + 1).join('/'); return html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb" @click=${() => { this.closeFile(); this.browse(p); }}>${part}</span>`; })}
+                    ${af ? html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb path-active">${af.name}</span>` : nothing}
+                `}
             </div>
             ${af ? html`<span class="file-meta" style="width:180px;text-align:right">${new Date(af.lastModified).toLocaleString()}</span>`
-                : (this.scanMode ? html`<span class="file-meta scan-badge">Media Cleanup scan</span>`
+                : (this.scanMode ? nothing
                     : html`<input type="text" class="search-input" placeholder="Search..." .value=${this.searchQuery} @input=${(e) => this.#handleSearch(e)}>`)}
         </div>`;
+    }
+
+    /** Breadcrumb within the Media Cleanup tab: All categories › [Category] › [file]. */
+    _renderScanCrumbs() {
+        const af = this.activeFile;
+        const overview = () => { this.closeFile(); this.setScanFilter(null); };
+        const atOverview = !this.scanFilter && !af;
+        return html`
+            <span class="path-crumb ${atOverview ? 'path-active' : ''}" @click=${() => atOverview ? null : overview()}>All categories</span>
+            ${this.scanFilter ? html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb ${af ? '' : 'path-active'}" @click=${() => af ? this.closeFile() : null}>${SCAN_CAT_LABEL(this.scanFilter)}</span>` : nothing}
+            ${af ? html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb path-active">${af.name}</span>` : nothing}
+        `;
+    }
+
+    /** Overview: a grid of category cards. Clicking a card drills into that category (like opening a folder). */
+    _renderScanOverview() {
+        const c = this.scanData?.counts || {};
+        const truncatedNotice = this.scanData?.truncated
+            ? html`<div class="scan-notice">⚠ Scan stopped early (file or time limit reached). Results may be incomplete — increase <code>MediaScanMaxFiles</code> / <code>MediaScanTimeBudgetSeconds</code> or narrow the library.</div>`
+            : nothing;
+        return html`
+            ${truncatedNotice}
+            <div class="scan-cards">
+                ${SCAN_CATS.map(cat => {
+                    const n = c[cat.key] || 0;
+                    return html`<button class="scan-card scan-card-${cat.tone} ${n ? '' : 'scan-card-empty'}" @click=${() => this.setScanFilter(cat.key)} title=${cat.label}>
+                        <uui-icon name=${cat.icon}></uui-icon>
+                        <span class="scan-card-count">${n}</span>
+                        <span class="scan-card-label">${cat.label}</span>
+                    </button>`;
+                })}
+            </div>`;
     }
 
     _renderEditorContent() {
@@ -605,8 +678,12 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     }
 
     _renderFileList() {
-        if (!this.items.length) return html`<div class="empty">${this.scanMode ? 'No items found in this category.' : 'This folder is empty'}</div>`;
+        const truncatedNotice = this.scanMode && this.scanData?.truncated
+            ? html`<div class="scan-notice">⚠ Scan stopped early (file or time limit reached). Results may be incomplete — increase <code>MediaScanMaxFiles</code> / <code>MediaScanTimeBudgetSeconds</code> or narrow the library.</div>`
+            : nothing;
+        if (!this.items.length) return html`${truncatedNotice}<div class="empty">${this.scanMode ? 'No items found in this category.' : 'This folder is empty'}</div>`;
         return html`
+            ${truncatedNotice}
             <uui-table aria-label="Files">
                 <uui-table-head>
                     ${this.isAdmin && !this.scanMode ? html`<uui-table-head-cell class="check-cell"><input type="checkbox" .checked=${this.selectedPaths.size === this.items.length && this.items.length > 0} @change=${() => this.#toggleSelectAll()}></uui-table-head-cell>` : nothing}
@@ -643,10 +720,14 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         const badge = item.detail || item.category || '';
         const modified = item.lastModified && new Date(item.lastModified).getFullYear() > 1
             ? new Date(item.lastModified).toLocaleString() : '';
-        const canPreview = isMedia(item.extension) && item.path && item.category !== 'broken';
+        // Media-backed rows: name links to the Media node. Orphaned media (no node): name previews in-place.
+        const isNode = !!item.mediaKey;
+        const canPreview = !isNode && isMedia(item.extension) && item.path;
+        const clickable = isNode || canPreview;
+        const onName = () => { if (isNode) this.openMediaNode(item); else if (canPreview) this.previewScanItem(item); };
         return html`<uui-table-row class="${this.#isScanSelected(item) ? 'selected' : ''}">
             ${this.hasMediaAccess ? html`<uui-table-cell class="check-cell"><input type="checkbox" .checked=${this.#isScanSelected(item)} @change=${() => this.#toggleScanSelect(item)}></uui-table-cell>` : nothing}
-            <uui-table-cell><span class="file-name ${canPreview ? 'clickable' : ''}" title=${item.path} @click=${() => canPreview && this.previewScanItem(item)}>${getIcon(item)} ${item.name}</span></uui-table-cell>
+            <uui-table-cell><span class="file-name ${clickable ? 'clickable' : ''}" title=${isNode ? 'Open in Media section' : item.path} @click=${() => clickable && onName()}>${getIcon(item)} ${item.name}${isNode ? html` <uui-icon name="icon-out" class="name-link-icon"></uui-icon>` : nothing}</span></uui-table-cell>
             <uui-table-cell class="date-cell">${badge ? html`<span class="scan-tag scan-tag-${item.category}">${badge}</span>` : nothing}</uui-table-cell>
             <uui-table-cell class="size-cell">${formatSize(item.size)}</uui-table-cell>
             <uui-table-cell class="date-cell">${modified}</uui-table-cell>
@@ -654,10 +735,21 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         </uui-table-row>`;
     }
 
+    /** Opens a media node in the Media section (new tab, so the scan stays open). */
+    openMediaNode(item) {
+        if (!item.mediaKey) return;
+        window.open(`/umbraco/section/media/workspace/media/edit/${item.mediaKey}`, '_blank', 'noopener');
+    }
+
     _renderScanActions(item) {
+        // Media-backed rows can jump straight to their node in the Media section.
+        const openMedia = item.mediaKey
+            ? html`<uui-button look="outline" compact @click=${() => this.openMediaNode(item)} title="Open in Media section"><uui-icon name="icon-out"></uui-icon></uui-button>`
+            : nothing;
+
         // Recycle Bin rows → restore (safe) or delete permanently, mirroring Umbraco's recycle bin.
         if (item.category === 'recyclebin') {
-            return html`
+            return html`${openMedia}
                 <uui-button look="outline" compact @click=${() => this.restoreMedia(item)} title="Restore from recycle bin"><uui-icon name="icon-undo"></uui-icon></uui-button>
                 <uui-button look="outline" compact color="danger" @click=${() => this.deleteMedia(item)} title="Delete permanently"><uui-icon name="icon-trash"></uui-icon></uui-button>`;
         }
@@ -665,7 +757,8 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         // permanent deletion + file cleanup when the recycle bin is emptied).
         // Orphaned files have no mediaKey → delete directly from the media file system.
         if (item.mediaKey) {
-            return html`<uui-button look="outline" compact @click=${() => this.recycleMedia(item)} title="Move to media recycle bin"><uui-icon name="icon-trash"></uui-icon></uui-button>`;
+            return html`${openMedia}
+                <uui-button look="outline" compact @click=${() => this.recycleMedia(item)} title="Move to media recycle bin"><uui-icon name="icon-trash"></uui-icon></uui-button>`;
         }
         return html`<uui-button look="outline" compact color="danger" @click=${() => this.deleteOrphan(item)} title="Delete orphaned file"><uui-icon name="icon-trash"></uui-icon></uui-button>`;
     }

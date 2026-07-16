@@ -62,8 +62,6 @@ export class UtproFileManagerContext extends UmbControllerBase {
     // ── Media Cleanup scan actions ──
     scan() { this.#activeView?.fmScan(); }
     exitScan() { this.#activeView?.fmExitScan(); }
-    setScanFilter(filter) { this.#activeView?.fmSetScanFilter(filter); }
-    refreshScanFilter(filter) { this.#activeView?.fmRefreshScanFilter(filter); }
     emptyRecycleBin() { this.#activeView?.fmEmptyRecycleBin(); }
     bulkScan(action) { this.#activeView?.fmBulkScan(action); }
     recycleDuplicatesKeepOne() { this.#activeView?.fmRecycleDuplicates(); }

@@ -33,10 +33,32 @@ internal class MediaScanService(
     IIdKeyMap idKeyMap,
     IMemoryCache cache,
     Microsoft.Extensions.Options.IOptions<FileManagerOptions> options,
+    Microsoft.Extensions.Options.IOptions<Umbraco.Cms.Core.Configuration.Models.ContentSettings> contentSettings,
     ILogger<MediaScanService> logger) : IMediaScanService
 {
     private const int MediaPageSize = 500;
     private const string ScanCacheKey = "uTPro.FileManager.MediaScan";
+
+    /// <summary>Media keys configured to be excluded from Unused/Large (false-positive suppression).</summary>
+    private HashSet<Guid> IgnoredMediaKeys()
+    {
+        var set = new HashSet<Guid>();
+        foreach (var id in options.Value.IgnoredMediaIds ?? [])
+            if (Guid.TryParse(id, out var g)) set.Add(g);
+        return set;
+    }
+
+    /// <summary>Disallowed upload extensions from Umbraco config, normalized to lower-case without a leading dot.</summary>
+    private HashSet<string> DisallowedExtensions()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in contentSettings.Value.DisallowedUploadedFileExtensions ?? Enumerable.Empty<string>())
+        {
+            var norm = (e ?? "").Trim().TrimStart('.').ToLowerInvariant();
+            if (norm.Length > 0) set.Add(norm);
+        }
+        return set;
+    }
 
     /// <summary>Drops any cached scan result so the next scan re-reads the library.</summary>
     private void InvalidateScanCache() => cache.Remove(ScanCacheKey);
@@ -60,14 +82,26 @@ internal class MediaScanService(
         var fs = mediaFileManager.FileSystem;
         var largeThresholdMB = options.Value.MediaLargeFileThresholdMB;
         var largeThresholdBytes = options.Value.MediaLargeFileThresholdBytes;
+        var ignored = IgnoredMediaKeys();
+        var disallowedExts = DisallowedExtensions();
+
+        // Scan guardrails: stop the expensive phases early on very large libraries.
+        var maxFiles = Math.Max(0, options.Value.MediaScanMaxFiles);
+        var budgetMs = (long)Math.Max(0, options.Value.MediaScanTimeBudgetSeconds) * 1000;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var truncated = false;
+        bool BudgetExceeded() => budgetMs > 0 && sw.ElapsedMilliseconds > budgetMs;
 
         var all = new List<MediaScanItem>();
         var broken = new List<MediaScanItem>();
         var unused = new List<MediaScanItem>();
         var duplicate = new List<MediaScanItem>();
+        var disallowed = new List<MediaScanItem>();
 
         // Normalized (relative) file paths referenced by media items — used for orphan detection.
         var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Map of referenced file path -> its media-backed row (so disallowed files can carry a media key).
+        var refByPath = new Dictionary<string, MediaScanItem>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var media in GetAllMedia())
         {
@@ -91,6 +125,7 @@ internal class MediaScanService(
             {
                 var rel = NormalizeRelative(fs, filePath);
                 referenced.Add(rel);
+                refByPath[rel] = item;
 
                 if (SafeFileExists(fs, rel))
                 {
@@ -106,7 +141,9 @@ internal class MediaScanService(
 
             all.Add(item);
 
-            // Unused: nothing depends on this media item.
+            // Unused: nothing depends on this media item (skip ignored keys).
+            if (ignored.Contains(media.Key))
+                continue;
             try
             {
                 var refs = await trackedReferencesService.GetPagedRelationsForItemAsync(media.Key, 0, 1, false);
@@ -123,6 +160,7 @@ internal class MediaScanService(
         var hashGroups = new Dictionary<string, List<MediaScanItem>>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in all)
         {
+            if (BudgetExceeded()) { truncated = true; break; }
             if (string.IsNullOrEmpty(item.Path)) continue;
             var rel = NormalizeRelative(fs, item.Path);
             if (!SafeFileExists(fs, rel)) continue;
@@ -148,13 +186,44 @@ internal class MediaScanService(
             }
         }
 
-        // Orphaned: files present in the media file system that no media item references.
+        // Single file-system walk → orphaned + disallowed-extension detection (with guardrails).
         var orphaned = new List<MediaScanItem>();
+        var scannedFiles = 0;
         foreach (var rel in EnumerateAllFiles(fs))
         {
-            if (referenced.Contains(rel)) continue;
+            if ((maxFiles > 0 && scannedFiles >= maxFiles) || BudgetExceeded()) { truncated = true; break; }
+            scannedFiles++;
 
             var name = Path.GetFileName(rel);
+            var ext = Path.GetExtension(name).ToLowerInvariant();
+
+            // Disallowed extension: a physical file whose type Umbraco would reject on upload.
+            if (disallowedExts.Count > 0 && disallowedExts.Contains(ext.TrimStart('.')))
+            {
+                if (refByPath.TryGetValue(rel, out var backed))
+                {
+                    var di = Clone(backed, "disallowed");
+                    di.Detail = $"Disallowed extension: {ext}";
+                    disallowed.Add(di);
+                }
+                else
+                {
+                    disallowed.Add(new MediaScanItem
+                    {
+                        Name = name,
+                        Path = rel,
+                        Type = "file",
+                        Size = SafeGetSize(fs, rel),
+                        LastModified = SafeGetLastModified(fs, rel),
+                        Extension = ext,
+                        Category = "disallowed",
+                        Detail = $"Disallowed extension: {ext}"
+                    });
+                }
+            }
+
+            if (referenced.Contains(rel)) continue;
+
             orphaned.Add(new MediaScanItem
             {
                 Name = name,
@@ -162,7 +231,7 @@ internal class MediaScanService(
                 Type = "file",
                 Size = SafeGetSize(fs, rel),
                 LastModified = SafeGetLastModified(fs, rel),
-                Extension = Path.GetExtension(name).ToLowerInvariant(),
+                Extension = ext,
                 Category = "orphaned"
             });
         }
@@ -170,7 +239,7 @@ internal class MediaScanService(
         // Large files: any scanned file (media-backed or orphaned) at/above the configured threshold,
         // largest first.
         var large = all
-            .Where(i => i.Size >= largeThresholdBytes)
+            .Where(i => i.Size >= largeThresholdBytes && !IsIgnored(i, ignored))
             .Concat(orphaned.Where(o => o.Size >= largeThresholdBytes))
             .OrderByDescending(i => i.Size)
             .Select(i =>
@@ -213,7 +282,9 @@ internal class MediaScanService(
             Orphaned = orphaned,
             Large = large,
             RecycleBin = recycleBin,
+            Disallowed = disallowed,
             LargeThresholdMB = largeThresholdMB,
+            Truncated = truncated,
             Counts = new MediaScanCounts
             {
                 Unused = unused.Count,
@@ -221,10 +292,14 @@ internal class MediaScanService(
                 Duplicate = duplicate.Count,
                 Orphaned = orphaned.Count,
                 Large = large.Count,
-                RecycleBin = recycleBin.Count
+                RecycleBin = recycleBin.Count,
+                Disallowed = disallowed.Count
             }
         };
     }
+
+    private static bool IsIgnored(MediaScanItem item, HashSet<Guid> ignored)
+        => item.MediaKey is not null && Guid.TryParse(item.MediaKey, out var g) && ignored.Contains(g);
 
     // ── Actions ──────────────────────────────────────────
 
