@@ -14,4 +14,10 @@ public interface IFileManagerService
     void Delete(string relativePath);
     void ExtractZip(string relativePath);
     string GetFullPath(string relativePath);
+
+    /// <summary>
+    /// Throws if the given path targets a protected/blocked secret file (web.config, appsettings*.json, .env…).
+    /// Exposed so read/download endpoints can enforce the block list before serving bytes.
+    /// </summary>
+    void ValidateNotBlocked(string relativePath);
 }

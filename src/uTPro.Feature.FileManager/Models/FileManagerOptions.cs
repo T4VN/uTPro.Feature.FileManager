@@ -66,6 +66,97 @@ public class FileManagerOptions
     /// <summary>Maximum allowed upload size in bytes.</summary>
     public long MaxUploadSizeBytes => (long)MaxUploadSizeMB * 1024 * 1024;
 
+    // ── Editable / protected file lists (configurable) ───────────────────────────────
+
+    /// <summary>Built-in text extensions the File Manager treats as viewable/editable.</summary>
+    private static readonly string[] DefaultEditableExtensions =
+    [
+        ".cshtml", ".css", ".js", ".json", ".xml", ".txt", ".html", ".htm",
+        ".config", ".md", ".razor", ".ts", ".tsx", ".jsx", ".mjs",
+        ".scss", ".less", ".yaml", ".yml",
+        ".svg", ".csv", ".log",
+        ".cs", ".csproj", ".sln", ".props", ".targets",
+        ".sql", ".sh", ".bat", ".cmd", ".ps1",
+        ".env", ".gitignore", ".editorconfig",
+        ".map", ".lock"
+    ];
+
+    /// <summary>Built-in protected file names that can never be viewed/edited/renamed/deleted.</summary>
+    private static readonly string[] DefaultBlockedNames =
+    [
+        "web.config", "appsettings.json", "appsettings.development.json",
+        "appsettings.production.json", "appsettings.staging.json", ".env"
+    ];
+
+    /// <summary>Built-in server-executable / dangerous extensions blocked from create/write/rename (RCE guard).</summary>
+    private static readonly string[] DefaultDangerousWriteExtensions =
+    [
+        ".cshtml", ".razor", ".vbhtml", ".asax", ".ashx", ".ascx", ".aspx", ".asp",
+        ".php", ".jsp", ".exe", ".dll", ".bat", ".cmd", ".com", ".msi", ".vbs", ".ps1", ".sh"
+    ];
+
+    /// <summary>
+    /// Text extensions the File Manager treats as viewable/editable. When empty (default) the built-in
+    /// list is used. When set, it REPLACES the built-in list — use <see cref="AdditionalEditableExtensions"/>
+    /// to only add to the defaults. Not security-sensitive (writing is still gated by the dangerous list).
+    /// </summary>
+    public string[] EditableExtensions { get; set; } = [];
+
+    /// <summary>Extra editable text extensions to ADD on top of the built-in defaults.</summary>
+    public string[] AdditionalEditableExtensions { get; set; } = [];
+
+    /// <summary>
+    /// Extra protected file names to block (view/edit/rename/delete), unioned with the built-in
+    /// defaults. Additive only — you can add protections but cannot remove a built-in one.
+    /// </summary>
+    public string[] AdditionalBlockedNames { get; set; } = [];
+
+    /// <summary>
+    /// Extra server-executable / dangerous extensions to block from create/write/rename, unioned with
+    /// the built-in defaults. Additive only — the built-in RCE protections can never be removed.
+    /// </summary>
+    public string[] AdditionalDangerousWriteExtensions { get; set; } = [];
+
+    private HashSet<string>? _editableSet;
+    private HashSet<string>? _blockedNameSet;
+    private HashSet<string>? _dangerousWriteSet;
+
+    /// <summary>Effective editable-extension set (lower-cased, leading dot). Built once.</summary>
+    public HashSet<string> EffectiveEditableExtensions =>
+        _editableSet ??= BuildExtensionSet(
+            EditableExtensions is { Length: > 0 } ? EditableExtensions : DefaultEditableExtensions,
+            AdditionalEditableExtensions);
+
+    /// <summary>Effective protected-file-name set (lower-cased). Built-in defaults ∪ configured extras.</summary>
+    public HashSet<string> EffectiveBlockedNames =>
+        _blockedNameSet ??= BuildNameSet(DefaultBlockedNames, AdditionalBlockedNames);
+
+    /// <summary>Effective dangerous-write-extension set (lower-cased, leading dot). Built-in defaults ∪ configured extras.</summary>
+    public HashSet<string> EffectiveDangerousWriteExtensions =>
+        _dangerousWriteSet ??= BuildExtensionSet(DefaultDangerousWriteExtensions, AdditionalDangerousWriteExtensions);
+
+    private static HashSet<string> BuildExtensionSet(IEnumerable<string> primary, IEnumerable<string>? extra)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in primary.Concat(extra ?? []))
+        {
+            var norm = NormalizeExtension(e);
+            if (norm.Length > 0) set.Add(norm);
+        }
+        return set;
+    }
+
+    private static HashSet<string> BuildNameSet(IEnumerable<string> primary, IEnumerable<string>? extra)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var n in primary.Concat(extra ?? []))
+        {
+            var norm = (n ?? "").Trim().ToLowerInvariant();
+            if (norm.Length > 0) set.Add(norm);
+        }
+        return set;
+    }
+
     /// <summary>
     /// Determines whether the given file name's extension is allowed to be uploaded.
     /// Comparisons are case-insensitive and tolerant of configured entries with or

@@ -124,12 +124,17 @@ public class FileManagerApiController(
             return Unauthorized(new { error = "Sensitive Data access required to download files." });
         try
         {
-            var fullPath = fileManager.GetFullPath(ResolvePath(path));
+            var resolved = ResolvePath(path);
+            fileManager.ValidateNotBlocked(resolved);
+            var fullPath = fileManager.GetFullPath(resolved);
             if (!System.IO.File.Exists(fullPath))
                 return NotFound(new { error = "File not found." });
             var bytes = System.IO.File.ReadAllBytes(fullPath);
             var name = Path.GetFileName(fullPath);
             var contentType = GetContentType(name);
+            // SVG can carry inline script; never serve it inline in the backoffice origin — force download.
+            if (IsSvg(contentType))
+                return File(bytes, contentType, name);
             return inline ? File(bytes, contentType) : File(bytes, contentType, name);
         }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
@@ -148,10 +153,11 @@ public class FileManagerApiController(
 
     // ── Media Cleanup scan (Admin only) ──────────────────
 
-    // Scanning is read-only: available to any Settings user (report is visible to everyone).
     [HttpPost("scan-media")]
     public async Task<IActionResult> ScanMedia([FromQuery] bool force = false)
     {
+        if (!IsAdmin() && !HasMediaAccess())
+            return Unauthorized(new { error = "Media access required to scan media." });
         try { return Ok(await mediaScan.ScanAsync(force)); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
@@ -160,6 +166,8 @@ public class FileManagerApiController(
     [HttpGet("media-file")]
     public IActionResult GetMediaFile([FromQuery] string path, [FromQuery] bool inline = true)
     {
+        if (!IsAdmin() && !HasSensitiveData())
+            return Unauthorized(new { error = "Sensitive Data access required to view media files." });
         try
         {
             var content = mediaScan.ReadMediaFile(path);
@@ -167,6 +175,9 @@ public class FileManagerApiController(
                 return NotFound(new { error = "Media file not found." });
 
             var contentType = GetContentType(content.FileName);
+            // SVG can carry inline script; never serve it inline in the backoffice origin — force download.
+            if (IsSvg(contentType))
+                return File(content.Bytes, contentType, content.FileName);
             return inline
                 ? File(content.Bytes, contentType)
                 : File(content.Bytes, contentType, content.FileName);
@@ -315,7 +326,9 @@ public class FileManagerApiController(
             }
 
             var filePath = Path.Combine(fullDir, safeFileName);
-            await using var stream = new FileStream(filePath, FileMode.Create);
+            if (System.IO.File.Exists(filePath))
+                return BadRequest(new { error = $"File already exists: {safeFileName}" });
+            await using var stream = new FileStream(filePath, FileMode.CreateNew);
             await file.CopyToAsync(stream);
             return Ok(new { success = true, name = safeFileName });
         }
@@ -331,6 +344,9 @@ public class FileManagerApiController(
     }
 
     // ── Helpers ──────────────────────────────────────────
+
+    private static bool IsSvg(string contentType) =>
+        contentType.Equals("image/svg+xml", StringComparison.OrdinalIgnoreCase);
 
     private static string GetContentType(string fileName)
     {

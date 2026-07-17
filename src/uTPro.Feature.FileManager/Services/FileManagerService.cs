@@ -9,27 +9,14 @@ namespace uTPro.Feature.FileManager.Services;
 
 internal class FileManagerService(
     IWebHostEnvironment env,
-    IHttpClientFactory httpClientFactory,
     ILogger<FileManagerService> logger,
     IOptions<FileManagerOptions> fileManagerOptions,
     IOptions<Umbraco.Cms.Core.Configuration.Models.ContentSettings> contentSettings) : IFileManagerService
 {
-    private static readonly HashSet<string> EditableExtensions =
-    [
-        ".cshtml", ".css", ".js", ".json", ".xml", ".txt", ".html", ".htm",
-        ".config", ".md", ".razor", ".ts", ".tsx", ".jsx", ".mjs",
-        ".scss", ".less", ".yaml", ".yml",
-        ".svg", ".csv", ".log",
-        ".cs", ".csproj", ".sln", ".props", ".targets",
-        ".sql", ".sh", ".bat", ".cmd", ".ps1",
-        ".env", ".gitignore", ".editorconfig",
-        ".map", ".lock"
-    ];
-
-    private static readonly HashSet<string> BlockedNames =
-    [
-        "web.config", "appsettings.json", "appsettings.development.json"
-    ];
+    // Editable text extensions, protected file names and dangerous (RCE) write extensions are all
+    // configurable via FileManagerOptions (uTPro:Feature:FileManager). The two security lists are
+    // additive (config can only ADD to the built-in defaults, never remove a protection).
+    private FileManagerOptions Options => fileManagerOptions.Value;
 
     // ── Browse ───────────────────────────────────────────
 
@@ -42,6 +29,7 @@ internal class FileManagerService(
             throw new DirectoryNotFoundException($"Directory not found: {safePath}");
 
         var dirInfo = new DirectoryInfo(fullPath);
+        var editableExtensions = Options.EffectiveEditableExtensions;
 
         var folders = dirInfo.EnumerateDirectories()
             .Where(d => !d.Name.StartsWith('.'))
@@ -65,7 +53,7 @@ internal class FileManagerService(
                 Size = f.Length,
                 LastModified = f.LastWriteTime,
                 Extension = f.Extension.ToLower(),
-                IsEditable = EditableExtensions.Contains(f.Extension.ToLower())
+                IsEditable = editableExtensions.Contains(f.Extension.ToLower())
             });
 
         var allItems = folders.Concat(files);
@@ -101,13 +89,14 @@ internal class FileManagerService(
     public FileContentResult GetFileContent(string relativePath)
     {
         var safePath = SanitizePath(relativePath);
+        ValidateNotBlocked(safePath);
         var fullPath = GetFullPath(safePath);
 
         if (!File.Exists(fullPath))
             throw new FileNotFoundException($"File not found: {safePath}");
 
         var ext = Path.GetExtension(fullPath).ToLower();
-        if (!EditableExtensions.Contains(ext))
+        if (!Options.EffectiveEditableExtensions.Contains(ext))
             throw new InvalidOperationException($"File type not editable: {ext}");
 
         return new FileContentResult
@@ -123,6 +112,7 @@ internal class FileManagerService(
     {
         var safePath = SanitizePath(relativePath);
         ValidateNotBlocked(safePath);
+        ValidateWritableExtension(safePath);
         var fullPath = GetFullPath(safePath);
 
         if (!File.Exists(fullPath))
@@ -151,6 +141,7 @@ internal class FileManagerService(
     {
         var safePath = SanitizePath(relativePath);
         var safeName = SanitizeName(fileName);
+        ValidateWritableExtension(safeName);
         var fullPath = Path.Combine(GetFullPath(safePath), safeName);
 
         if (File.Exists(fullPath))
@@ -172,9 +163,7 @@ internal class FileManagerService(
 
         var options = fileManagerOptions.Value;
 
-        var httpClient = httpClientFactory.CreateClient();
-        httpClient.Timeout = TimeSpan.FromMinutes(5);
-        var response = await httpClient.GetAsync(url);
+        var response = await GetWithValidatedRedirectsAsync(url);
         response.EnsureSuccessStatusCode();
 
         // Reject early if the server advertises a size that exceeds the configured limit.
@@ -193,7 +182,10 @@ internal class FileManagerService(
 
         var fullPath = Path.Combine(fullDir, safeName);
 
-        await using (var fileStream = new FileStream(fullPath, FileMode.Create))
+        if (File.Exists(fullPath))
+            throw new InvalidOperationException($"File already exists: {safeName}");
+
+        await using (var fileStream = new FileStream(fullPath, FileMode.CreateNew))
         {
             await response.Content.CopyToAsync(fileStream);
         }
@@ -208,6 +200,58 @@ internal class FileManagerService(
 
         logger.LogInformation("Imported from URL: {Url} -> {Path}/{Name}", url, safePath, safeName);
     }
+
+    /// <summary>
+    /// Performs an HTTP GET while following redirects manually, re-validating every redirect target
+    /// through <see cref="ValidateUrlAsync"/>. Auto-redirect is disabled so a redirect to an internal
+    /// address (SSRF rebinding) cannot bypass the initial guard. Redirects are capped to avoid loops.
+    /// </summary>
+    private async Task<HttpResponseMessage> GetWithValidatedRedirectsAsync(string url)
+    {
+        const int maxRedirects = 5;
+
+        var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        var httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(5) };
+
+        var currentUrl = url;
+        for (var hop = 0; ; hop++)
+        {
+            var response = await httpClient.GetAsync(currentUrl, HttpCompletionOption.ResponseHeadersRead);
+
+            if (!IsRedirect(response.StatusCode))
+                return response;
+
+            if (hop >= maxRedirects)
+            {
+                response.Dispose();
+                throw new InvalidOperationException("Too many redirects while importing from URL.");
+            }
+
+            var location = response.Headers.Location;
+            response.Dispose();
+
+            if (location is null)
+                throw new InvalidOperationException("Redirect response did not include a Location header.");
+
+            // Resolve relative redirects against the current URL, then re-run the SSRF guard.
+            var nextUri = location.IsAbsoluteUri
+                ? location
+                : new Uri(new Uri(currentUrl), location);
+
+            await ValidateUrlAsync(nextUri.ToString());
+            currentUrl = nextUri.ToString();
+        }
+    }
+
+    private static bool IsRedirect(HttpStatusCode statusCode) => statusCode switch
+    {
+        HttpStatusCode.MovedPermanently => true,   // 301
+        HttpStatusCode.Found => true,               // 302
+        HttpStatusCode.SeeOther => true,            // 303
+        HttpStatusCode.TemporaryRedirect => true,   // 307
+        HttpStatusCode.PermanentRedirect => true,   // 308
+        _ => false
+    };
 
     /// <summary>
     /// SSRF guard for <see cref="ImportFromUrl"/>: only allow http/https, and reject any URL whose
@@ -315,7 +359,10 @@ internal class FileManagerService(
         var newFullPath = Path.Combine(parentDir, safeName);
 
         if (File.Exists(fullPath))
+        {
+            ValidateWritableExtension(safeName);
             File.Move(fullPath, newFullPath);
+        }
         else if (Directory.Exists(fullPath))
             Directory.Move(fullPath, newFullPath);
         else
@@ -393,10 +440,21 @@ internal class FileManagerService(
     private static string CombinePath(string basePath, string name)
         => string.IsNullOrEmpty(basePath) ? name : $"{basePath}/{name}";
 
-    private static void ValidateNotBlocked(string path)
+    public void ValidateNotBlocked(string relativePath)
     {
-        var fileName = Path.GetFileName(path).ToLower();
-        if (BlockedNames.Contains(fileName))
-            throw new UnauthorizedAccessException($"Cannot modify protected file: {fileName}");
+        var fileName = Path.GetFileName(SanitizePath(relativePath)).ToLower();
+        if (Options.EffectiveBlockedNames.Contains(fileName))
+            throw new UnauthorizedAccessException($"Cannot access protected file: {fileName}");
+    }
+
+    /// <summary>
+    /// Rejects create/write/rename operations that target a server-executable or otherwise
+    /// dangerous extension (RCE guard). Applied to CreateFile, SaveFileContent and Rename.
+    /// </summary>
+    private void ValidateWritableExtension(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        if (Options.EffectiveDangerousWriteExtensions.Contains(ext))
+            throw new UnauthorizedAccessException($"Cannot create or write files with a server-executable extension: {ext}");
     }
 }
