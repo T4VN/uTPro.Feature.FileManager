@@ -76,10 +76,13 @@ No configuration needed — auto-registers via Umbraco `IComposer`. After instal
 - **Write operations** (create, rename, delete, upload, extract ZIP, import URL) — Admin only
 - **Media Cleanup** — the scan report is visible to any Settings user; its destructive actions (recycle/restore/delete/empty/delete-orphan) require **Media section access** (Admins always qualify)
 - Non-admin users are jailed to `wwwroot/` — cannot access `appsettings.json`, `web.config`, or any files outside `wwwroot`
-- Protected files: `web.config`, `appsettings.json`, `appsettings.development.json` cannot be modified or deleted
+- Protected files: `web.config`, `appsettings.json`, `appsettings.development.json`, `appsettings.production.json`, `appsettings.staging.json`, and `.env` cannot be viewed, downloaded, modified or deleted. The block list is now enforced on **view** and **download** too (previously only on modify/delete), and can be extended (never reduced) via `AdditionalBlockedNames`.
+- **RCE guard on write** — creating, saving, or renaming a file to a server-executable extension (`.cshtml`, `.razor`, `.aspx`, `.ashx`, `.ascx`, `.asp`, `.php`, `.jsp`, `.exe`, `.dll`, `.bat`, `.cmd`, `.com`, `.msi`, `.vbs`, `.ps1`, `.sh`, …) is blocked. Note: files like `.cshtml` remain **viewable/editable** but cannot be created or written. Extend (never reduce) the list via `AdditionalDangerousWriteExtensions`.
 - Path traversal protection on all endpoints
+- **Media endpoints require authorization** — the media preview/stream (`media-file`) endpoint requires **Sensitive Data**, and the media scan (`scan-media`) endpoint requires **Media access** (previously neither had a per-action check).
+- **SVG served as attachment** — SVG files are always served as an attachment (never inline) to prevent inline-script execution in the backoffice origin.
 - **Upload validation** — configurable maximum size plus optional allow-list / block-list of extensions (see [Configuration](#configuration)), enforced on both file upload and import-from-URL
-- **SSRF protection on Import via URL** — the supplied URL must use `http`/`https`, and any URL whose host resolves to a loopback, private, link-local, or reserved address (e.g. the cloud metadata endpoint `169.254.169.254`) is rejected. Requests go through `IHttpClientFactory` to avoid socket exhaustion.
+- **SSRF protection on Import via URL** — the supplied URL must use `http`/`https`, and any URL whose host resolves to a loopback, private, link-local, or reserved address (e.g. the cloud metadata endpoint `169.254.169.254`) is rejected. Auto-redirect is disabled so **every redirect hop is re-validated** — a redirect to an internal address can't bypass the guard. The DNS-based guard also covers IPv6 (mapped/loopback/ULA) and the full `127.0.0.0/8` range. Requests go through `IHttpClientFactory` to avoid socket exhaustion.
 
 ### UI
 - Windows Explorer-style navigation bar (back, reload, home, breadcrumb path bar, search)
@@ -103,8 +106,15 @@ No configuration is required — the package ships with safe defaults. To custom
         "MaxUploadSizeMB": 50,
         "AllowedUploadExtensions": [],
         "BlockedUploadExtensions": [ ".exe", ".dll", ".bat" ],
+        "EditableExtensions": [],
+        "AdditionalEditableExtensions": [ ".liquid" ],
+        "AdditionalBlockedNames": [ "secrets.json" ],
+        "AdditionalDangerousWriteExtensions": [ ".phtml" ],
         "MediaLargeFileThresholdMB": 100,
-        "MediaScanCacheSeconds": 30
+        "MediaScanCacheSeconds": 30,
+        "IgnoredMediaIds": [],
+        "MediaScanMaxFiles": 50000,
+        "MediaScanTimeBudgetSeconds": 30
       }
     }
   }
@@ -116,10 +126,19 @@ No configuration is required — the package ships with safe defaults. To custom
 | `MaxUploadSizeMB` | `50` | Maximum allowed upload size in megabytes. Enforced on both file upload and import-from-URL. |
 | `AllowedUploadExtensions` | `[]` (allow all) | Allow-list of file extensions. When non-empty, only these may be uploaded — **unioned with Umbraco's `Content:AllowedUploadedFileExtensions`** (both widen what's permitted). Leave empty to allow all (so File Manager can still upload site files like css/js/cshtml); an empty value does **not** inherit Umbraco's media whitelist. Case-insensitive, dot optional. |
 | `BlockedUploadExtensions` | `[]` | Additional block-list of file extensions, always rejected. **Combined (union) with Umbraco's `Content:DisallowedUploadedFileExtensions`** — keep the shared web-dangerous list in Umbraco and use this only for File-Manager-specific extras (e.g. binaries like `.exe`/`.dll`). |
+| `EditableExtensions` | `[]` (use built-in list) | **Replaces** the built-in list of viewable/editable text extensions when non-empty. Controls which files open in the code editor rather than downloading. Not security-sensitive — writing is still gated by the dangerous-extension guard (see below). Case-insensitive, dot optional. |
+| `AdditionalEditableExtensions` | `[]` | Extra editable text extensions **added on top of** the built-in defaults (does not replace them). Use this to make a custom text format viewable/editable without redefining the whole list. Case-insensitive, dot optional. |
+| `AdditionalBlockedNames` | `[]` | **Security, additive-only.** Extra protected file names that can never be viewed, edited, renamed or deleted. Built-in defaults (`web.config`, `appsettings*.json`, `.env`) can never be removed — config can only **add** protections, never take them away. |
+| `AdditionalDangerousWriteExtensions` | `[]` | **Security, additive-only.** Extra server-executable/dangerous extensions blocked from create/write/rename. Built-in RCE defaults (`.cshtml`, `.razor`, `.aspx`, `.php`, `.exe`, …) can never be removed — config can only **add** to the guard, never take away. |
 | `MediaLargeFileThresholdMB` | `100` | Media Cleanup: files at or above this size (MB) are reported under the **Large files** category. |
 | `MediaScanCacheSeconds` | `30` | Media Cleanup: how long a scan result is cached so repeated tab switches don't re-scan the whole library. A forced reload or any cleanup action clears the cache. Set to `0` to disable caching. |
+| `IgnoredMediaIds` | `[]` | Media Cleanup: media item IDs to ignore, silencing known false positives in the **Unused** and **Large** categories. |
+| `MediaScanMaxFiles` | `50000` | Media Cleanup: scan guardrail — stops a very large scan early once this many files have been examined, with an on-screen notice. |
+| `MediaScanTimeBudgetSeconds` | `30` | Media Cleanup: scan guardrail — stops a scan early once this time budget is exceeded, with an on-screen notice. |
 
 > The upload limits apply to write operations only and are enforced server-side, independent of any client-side checks.
+
+> **The two security lists are additive.** `AdditionalBlockedNames` and `AdditionalDangerousWriteExtensions` can only **add** protections on top of the built-in defaults — config can never remove a built-in protection.
 
 ## Compatibility
 
@@ -206,6 +225,16 @@ src/uTPro.Feature.FileManager/
 ```
 
 ## Changelog
+
+### 4.1.0 (security & performance hardening)
+- **Configurable editable/blocked/dangerous lists** — `EditableExtensions` (replaces the built-in editable set), `AdditionalEditableExtensions` (adds to it), plus two **additive-only security lists**: `AdditionalBlockedNames` and `AdditionalDangerousWriteExtensions` (config can only add protections, never remove a built-in one). See [Configuration](#configuration).
+- **Block list enforced on read/download** — protected file names are now blocked on **view** and **download** too (previously only modify/delete), and the built-in list was expanded to include `appsettings.production.json`, `appsettings.staging.json`, and `.env`.
+- **RCE guard on create/save/rename** — writing to a server-executable extension (`.cshtml`, `.razor`, `.aspx`, `.php`, `.exe`, …) is blocked; such files remain viewable/editable but cannot be created or written.
+- **Authorization added to media endpoints** — `media-file` (preview/stream) now requires **Sensitive Data** and `scan-media` requires **Media access**; previously neither had a per-action check.
+- **SVG served as attachment** — SVG files are never served inline, preventing inline-script execution in the backoffice origin.
+- **Per-hop SSRF re-validation on Import via URL** — auto-redirect is disabled and every redirect hop is re-validated so a redirect to an internal address can't bypass the guard; the DNS-based guard now also covers IPv6 (mapped/loopback/ULA) and the full `127.0.0.0/8` range.
+- **MediaScanService performance** — removed N+1 tracked-reference queries via batching, and unique-size files are no longer hashed (duplicate detection only hashes files that share a size).
+- No breaking API changes.
 
 ### 4.0.0
 - **Media Cleanup is now its own workspace tab** next to *File Manager* (no more "Scan Media" button / in-place mode toggle). Switch tabs to move between managing files and cleaning up media.
