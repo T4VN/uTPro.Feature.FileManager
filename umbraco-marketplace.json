@@ -11,12 +11,16 @@
   },
   "Screenshots": [
     {
-      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v4.0.0/FileManager.png",
-      "Caption": "File Manager tab (v4.0.0)"
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v5.0.0/FileManager-default.png",
+      "Caption": "File Manager — browse, edit, upload, preview and manage server files"
     },
     {
-      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v4.0.0/MediaCleanup.png",
-      "Caption": "Media Cleanup tab (v4.0.0)"
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v5.0.0/FileManager-gridview.png",
+      "Caption": "Grid view — square tiles with image thumbnails (toggle List / Grid)"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v5.0.0/FileManager-configpath.png",
+      "Caption": "Multi-root Locations — a card per configured root"
     },
     {
       "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Admin%20-%20Screenshot%202026-03-31%20122558.png",

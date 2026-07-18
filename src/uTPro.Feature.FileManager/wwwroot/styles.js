@@ -49,6 +49,7 @@ export const dashboardStyles = css`
     .scan-card-info   { border-left-color: #2563eb; }
     .scan-card-purple { border-left-color: #7c3aed; }
     .scan-card-muted  { border-left-color: #64748b; }
+    .loc-badge { align-self: flex-start; font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #2563eb; background: rgba(37,99,235,.12); padding: 1px 6px; border-radius: 4px; }
     .search-input:focus { outline: none; border-color: var(--uui-color-interactive, #1b264f); }
 
     /* Action bar */
@@ -89,6 +90,33 @@ export const dashboardStyles = css`
     .editor-ext { font-size: .8rem; color: #888; font-weight: 400; background: var(--uui-color-surface-alt, #f0f0f0); padding: 2px 8px; border-radius: 4px; }
     .file-meta { font-size: .8rem; color: #999; }
     .dirty-badge { color: #f59e0b; font-weight: 600; font-size: .85rem; }
+
+    /* View-mode toggle (list / grid) */
+    .view-toggle { display: flex; flex-shrink: 0; border: 1px solid var(--uui-color-border, #ccc); border-radius: 4px; overflow: hidden; height: 34px; }
+    .vt-btn { background: none; border: none; cursor: pointer; width: 34px; display: flex; align-items: center; justify-content: center; color: var(--uui-color-text, #333); }
+    .vt-btn:hover { background: var(--uui-color-surface-alt, #f4f4f4); }
+    .vt-btn.active { background: var(--uui-color-interactive, #1b264f); color: #fff; }
+
+    /* Grid view */
+    .fm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin-top: 12px; }
+    .grid-tile { position: relative; border: 1px solid var(--uui-color-border, #e0e0e0); border-radius: 8px; overflow: hidden; background: var(--uui-color-surface, #fff); display: flex; flex-direction: column; transition: box-shadow .15s, transform .15s; }
+    .grid-tile:hover { box-shadow: 0 4px 14px rgba(0,0,0,.1); }
+    .grid-tile.selected { border-color: var(--uui-color-interactive, #1b264f); box-shadow: 0 0 0 2px var(--uui-color-interactive, #1b264f) inset; }
+    .grid-thumb-wrap { aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; overflow: hidden;
+        background-color: #fff;
+        background-image:
+            linear-gradient(45deg, #ececec 25%, transparent 25%), linear-gradient(-45deg, #ececec 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #ececec 75%), linear-gradient(-45deg, transparent 75%, #ececec 75%);
+        background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+    .grid-thumb-wrap.clickable { cursor: pointer; }
+    .grid-thumb { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .grid-icon uui-icon { font-size: 46px; color: #98a2b3; opacity: .85; }
+    .grid-name { padding: 8px 10px; font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-top: 1px solid var(--uui-color-border, #eee); }
+    .grid-check { position: absolute; top: 6px; left: 6px; z-index: 2; width: 16px; height: 16px; cursor: pointer; }
+    /* Media Cleanup grid extras (status tag + row actions under each tile) */
+    .grid-meta { padding: 0 10px 6px; }
+    .grid-meta .scan-tag { font-size: .7rem; }
+    .grid-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px 8px; }
 
     /* Preview inline */
     .preview-inline { display: flex; align-items: center; justify-content: center; padding: 20px; min-height: 300px; }

@@ -66,6 +66,14 @@ public class FileManagerOptions
     /// <summary>Maximum allowed upload size in bytes.</summary>
     public long MaxUploadSizeBytes => (long)MaxUploadSizeMB * 1024 * 1024;
 
+    /// <summary>
+    /// Optional extra browsable roots ("locations"). When EMPTY (default) the File Manager keeps
+    /// its single-root behaviour (admins → content root, non-admins → web root, no location cards).
+    /// When one or more roots are configured, the File Manager shows a Locations overview (one card
+    /// per root, like Media Cleanup) and each root is browsed as its own confined tree.
+    /// </summary>
+    public FileManagerRootOption[] Roots { get; set; } = [];
+
     // ── Editable / protected file lists (configurable) ───────────────────────────────
 
     /// <summary>Built-in text extensions the File Manager treats as viewable/editable.</summary>

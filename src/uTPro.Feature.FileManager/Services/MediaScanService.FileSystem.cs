@@ -120,6 +120,44 @@ internal partial class MediaScanService
         catch { return false; }
     }
 
+    /// <summary>
+    /// Fallback existence check for media that is served as a static file from a custom URL
+    /// path (e.g. <c>UmbracoMediaPath = ~/uploads</c> served straight from the web root) which
+    /// the Umbraco media file system may not be rooted at. Resolves the referenced URL/relative
+    /// path under the web root and content root and returns true when a real file is found there,
+    /// so such media is not incorrectly reported as "broken". Path traversal is guarded.
+    /// </summary>
+    private bool FileServedFromDisk(string? urlOrRelative)
+    {
+        if (string.IsNullOrWhiteSpace(urlOrRelative))
+            return false;
+
+        var relative = urlOrRelative.Replace('\\', '/').TrimStart('/');
+        if (relative.Length == 0)
+            return false;
+
+        foreach (var baseDir in new[] { env.WebRootPath, env.ContentRootPath })
+        {
+            if (string.IsNullOrEmpty(baseDir))
+                continue;
+
+            try
+            {
+                var root = Path.GetFullPath(baseDir);
+                var full = Path.GetFullPath(Path.Combine(root, relative));
+
+                // Stay within the base directory (defence in depth against traversal).
+                if ((full.Equals(root, StringComparison.OrdinalIgnoreCase)
+                        || full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    && System.IO.File.Exists(full))
+                    return true;
+            }
+            catch { /* ignore malformed paths */ }
+        }
+
+        return false;
+    }
+
     private static long SafeGetSize(IFileSystem fs, string rel)
     {
         try { return fs.GetSize(rel); }

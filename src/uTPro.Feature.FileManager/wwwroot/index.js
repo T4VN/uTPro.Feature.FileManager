@@ -30,12 +30,14 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         isAdmin: { state: true }, hasMediaAccess: { state: true }, showNewMenu: { state: true },
         activeFile: { state: true }, showActionsMenu: { state: true },
         scanMode: { state: true }, scanFilter: { state: true }, scanData: { state: true },
-        scanSelected: { state: true }, mediaMode: { state: true },
+        scanSelected: { state: true }, mediaMode: { state: true }, viewMode: { state: true },
+        roots: { state: true }, activeRoot: { state: true },
     };
     static styles = dashboardStyles;
 
     #authContext; #fmContext = null; #originalContent = ''; #searchTimeout = null;
     #scanFiltered = []; // full list for the active scan filter (client-side paged into `items`)
+    #thumbs = new Map(); #thumbObserver = null; // lazy grid-thumbnail cache (path -> object URL)
     #beforeUnloadHandler = (e) => { if (this.isDirty) { e.preventDefault(); e.returnValue = ''; } };
 
     constructor() {
@@ -51,6 +53,8 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             showNewMenu: false, activeFile: null, showActionsMenu: false,
             scanMode: false, scanFilter: null, scanData: null,
             scanSelected: new Set(), mediaMode: false,
+            roots: [], activeRoot: null,
+            viewMode: (() => { try { return localStorage.getItem('utpro-fm-view') || 'list'; } catch { return 'list'; } })(),
         });
         this.consumeContext(UMB_AUTH_CONTEXT, (ctx) => { this.#authContext = ctx; });
         this.consumeContext(UTPRO_FILEMANAGER_CONTEXT, (ctx) => {
@@ -72,17 +76,42 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             return;
         }
 
+        // Load configured Locations (multi-root). Empty => single-root default behaviour.
+        await this.#loadRoots();
+
         const p = new URLSearchParams(window.location.search);
         const initialPath = p.get('path') || '';
         const pages = parseInt(p.get('pages') || '1', 10);
         const file = p.get('file') || '';
+        const urlRoot = p.get('root') || '';
+
+        // With Locations configured, land on the overview unless a specific root is in the URL.
+        if (this.roots.length && !urlRoot) { this.isLoading = false; return; }
+        if (urlRoot && this.roots.some(r => r.key === urlRoot)) this.activeRoot = urlRoot;
+
         await this.browse(initialPath);
         for (let i = 2; i <= pages; i++) await this.browse(initialPath, i, true);
         if (file) await this.#openFilePath(file);
     }
-    disconnectedCallback() { super.disconnectedCallback(); window.removeEventListener('beforeunload', this.#beforeUnloadHandler); this.#fmContext?.clearActiveView(this); }
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        window.removeEventListener('beforeunload', this.#beforeUnloadHandler);
+        this.#fmContext?.clearActiveView(this);
+        this.#thumbObserver?.disconnect();
+        this.#thumbs.forEach(url => URL.revokeObjectURL(url));
+        this.#thumbs.clear();
+    }
 
-    updated() { this.#publishFooter(); }
+    updated() {
+        this.#publishFooter();
+        // Kick off lazy thumbnail loading for grid tiles currently in the DOM.
+        if (this.viewMode !== 'grid' || this.editingFile || this.previewFile) return;
+        const obs = this.#ensureThumbObserver();
+        this.shadowRoot?.querySelectorAll('img.grid-thumb:not([data-loaded])').forEach(img => {
+            if (this.#thumbs.has(img.dataset.path)) { img.dataset.loaded = '1'; img.src = this.#thumbs.get(img.dataset.path); }
+            else obs.observe(img);
+        });
+    }
 
     // ── Footer app bridge ────────────────────────────────
     // The New/bulk-action cluster and item count live in the workspace footer
@@ -302,10 +331,8 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         if (!isMedia(item.extension) || !item.path) return;
         if (item.category === 'broken') return this.showError('File is missing — cannot preview.');
         this.editingFile = null; this.activeFile = null;
-        const res = await this.#fetchAuth(`${API_BASE}/media-file?path=${encodeURIComponent(item.path)}&inline=true`);
-        if (!res.ok) { const j = await res.json().catch(() => ({})); return this.showError(j?.error || 'Preview failed'); }
-        const blob = await res.blob();
-        this.previewFile = { ...item, url: URL.createObjectURL(blob), type: blob.type, ext: item.extension };
+        // Use the public media URL (like Umbraco's media editor) so custom-path / static-served media renders.
+        this.previewFile = { ...item, url: this.#publicMediaUrl(item.path), type: '', ext: item.extension };
         this.activeFile = item;
     }
 
@@ -361,6 +388,54 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         catch { this.isAdmin = false; this.hasSensitiveData = false; this.hasMediaAccess = false; }
     }
 
+    async #loadRoots() {
+        try { this.roots = await this.api('roots', {}, 'GET') || []; }
+        catch { this.roots = []; }
+    }
+
+    /** True when Locations are configured and the user hasn't drilled into one yet. */
+    get #showLocations() {
+        return !this.mediaMode && this.roots.length > 0 && !this.activeRoot
+            && !this.scanMode && !this.editingFile && !this.previewFile;
+    }
+
+    /** Enter a configured Location (root card) and browse its top level. */
+    openRoot(key) {
+        if (!this.#confirmDiscard()) return;
+        this.activeRoot = key;
+        this.searchQuery = '';
+        this.browse('');
+    }
+
+    /** Return to the Locations overview (only meaningful when roots are configured). */
+    exitRoot() {
+        if (!this.#confirmDiscard()) return;
+        this.closeFile();
+        this.activeRoot = null;
+        this.currentPath = ''; this.items = []; this.totalItems = 0; this.totalPages = 1; this.currentPage = 1;
+        this.searchQuery = '';
+        this.#syncUrl();
+    }
+
+    #activeRootLabel() {
+        return this.roots.find(r => r.key === this.activeRoot)?.label || this.activeRoot;
+    }
+
+    /** '&root=<key>' fragment for raw (query-string) endpoints, or '' in default single-root mode. */
+    #rootQuery() { return this.activeRoot ? `&root=${encodeURIComponent(this.activeRoot)}` : ''; }
+
+    /**
+     * Public URL for a media file, exactly like Umbraco's own media editor renders it. Media is
+     * served publicly (from the media file system OR a custom static path such as
+     * `UmbracoMediaPath = ~/uploads`), so a plain same-origin URL renders reliably — whereas the
+     * authenticated `media-file` blob endpoint can't read media served straight from disk.
+     */
+    #publicMediaUrl(path) {
+        if (!path) return '';
+        if (/^https?:\/\//i.test(path)) return path;
+        return path.startsWith('/') ? path : `/${path}`;
+    }
+
     #confirmDiscard() {
         return !this.isDirty || confirm('You have unsaved changes. Discard and continue?');
     }
@@ -369,6 +444,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     #syncUrl() {
         if (this.mediaMode) return; // media tab owns its own route; don't touch query string
         const u = new URL(window.location);
+        this.activeRoot ? u.searchParams.set('root', this.activeRoot) : u.searchParams.delete('root');
         this.currentPath ? u.searchParams.set('path', this.currentPath) : u.searchParams.delete('path');
         this.currentPage > 1 ? u.searchParams.set('pages', String(this.currentPage)) : u.searchParams.delete('pages');
         const af = this.activeFile; af ? u.searchParams.set('file', af.path) : u.searchParams.delete('file');
@@ -393,7 +469,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             if (path !== this.currentPath) this.searchQuery = '';
         }
         try {
-            const d = await this.api('browse', { path, page, pageSize: PAGE_SIZE, search: this.searchQuery });
+            const d = await this.api('browse', { path, page, pageSize: PAGE_SIZE, search: this.searchQuery, root: this.activeRoot });
             Object.assign(this, { currentPath: d.currentPath, parentPath: d.parentPath, totalItems: d.totalItems, currentPage: d.page, totalPages: d.totalPages });
             this.items = append ? [...this.items, ...d.items] : (d.items || []);
         } catch (e) { this.showError(e.message); }
@@ -434,7 +510,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     async #openEdit(item) {
         this.previewFile = null; this.activeFile = null; this.isLoading = true;
         try {
-            const d = await this.api('file-content', { path: item.path });
+            const d = await this.api('file-content', { path: item.path, root: this.activeRoot });
             this.editingFile = d; this.editContent = d.content; this.#originalContent = d.content; this.isDirty = false;
             this.activeFile = { ...item, ...d };
         } catch (e) { this.showError(e.message); }
@@ -443,7 +519,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
 
     async #openPreview(item) {
         this.editingFile = null; this.activeFile = null;
-        const res = await this.#fetchAuth(`${API_BASE}/download?path=${encodeURIComponent(item.path)}&inline=true`);
+        const res = await this.#fetchAuth(`${API_BASE}/download?path=${encodeURIComponent(item.path)}&inline=true${this.#rootQuery()}`);
         if (!res.ok) {
             const json = await res.json();
             if (json) {
@@ -470,7 +546,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             // Get latest code from editor in case events didn't fire
             const editor = this.shadowRoot?.querySelector('umb-code-editor');
             if (editor) this.editContent = editor.code || this.editContent;
-            await this.api('save-file', { path: this.editingFile.path, content: this.editContent });
+            await this.api('save-file', { path: this.editingFile.path, content: this.editContent, root: this.activeRoot });
             this.#originalContent = this.editContent; this.isDirty = false;
         } catch (e) { this.showError(e.message); }
     }
@@ -479,7 +555,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         const n = prompt('New name:', item.name);
         if (!n || n === item.name) return;
         try {
-            await this.api('rename', { path: item.path, newName: n });
+            await this.api('rename', { path: item.path, newName: n, root: this.activeRoot });
             if (reopen) {
                 const newPath = item.path.substring(0, item.path.lastIndexOf('/') + 1) + n;
                 const ext = '.' + n.split('.').pop().toLowerCase();
@@ -487,7 +563,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
                 if (this.editingFile) await this.#openEdit(updated);
                 else if (this.previewFile) await this.#openPreview(updated);
                 // Refresh file list without closing the file view
-                const d = await this.api('browse', { path: this.currentPath, page: 1, pageSize: PAGE_SIZE, search: this.searchQuery });
+                const d = await this.api('browse', { path: this.currentPath, page: 1, pageSize: PAGE_SIZE, search: this.searchQuery, root: this.activeRoot });
                 this.items = d.items || []; this.totalItems = d.totalItems; this.totalPages = d.totalPages;
             } else {
                 await this.browse(this.currentPath);
@@ -498,14 +574,14 @@ export class UtproFileManagerDashboard extends UmbLitElement {
     async deleteItem(item, closeAfter = false) {
         if (!confirm(`Delete "${item.name}"?`)) return;
         try {
-            await this.api('delete', { path: item.path });
+            await this.api('delete', { path: item.path, root: this.activeRoot });
             if (closeAfter) this.closeFile();
             await this.browse(this.currentPath);
         } catch (e) { this.showError(e.message); }
     }
 
     async downloadFile(item) {
-        const res = await this.#fetchAuth(`${API_BASE}/download?path=${encodeURIComponent(item.path)}`);
+        const res = await this.#fetchAuth(`${API_BASE}/download?path=${encodeURIComponent(item.path)}${this.#rootQuery()}`);
         if (!res.ok) return this.showError('Download failed');
         const blob = await res.blob(); const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = item.name; a.click(); URL.revokeObjectURL(url);
@@ -516,6 +592,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         try {
             for (const file of files) {
                 const fd = new FormData(); fd.append('path', this.currentPath); fd.append('file', file);
+                if (this.activeRoot) fd.append('root', this.activeRoot);
                 const config = this.#authContext?.getOpenApiConfiguration();
                 const headers = {};
                 if (config?.token) { const t = await config.token(); if (t) headers['Authorization'] = `Bearer ${t}`; }
@@ -531,7 +608,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         this.showNewMenu = false;
         const label = type === 'folder' ? 'New folder name:' : 'New file name (e.g. style.css):';
         const n = prompt(label); if (!n) return;
-        try { await this.api(`create-${type}`, { path: this.currentPath, name: n }); await this.browse(this.currentPath); }
+        try { await this.api(`create-${type}`, { path: this.currentPath, name: n, root: this.activeRoot }); await this.browse(this.currentPath); }
         catch (e) { this.showError(e.message); }
     }
 
@@ -539,7 +616,7 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         this.showNewMenu = false;
         const u = prompt('Enter file URL to import:'); if (!u) return;
         this.isLoading = true;
-        try { await this.api('import-url', { path: this.currentPath, url: u }); await this.browse(this.currentPath); }
+        try { await this.api('import-url', { path: this.currentPath, url: u, root: this.activeRoot }); await this.browse(this.currentPath); }
         catch (e) { this.showError(e.message); }
         this.isLoading = false;
     }
@@ -558,12 +635,52 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         this.isLoading = true;
         try {
             const items = action === 'extract-zip' ? paths.filter(p => p.toLowerCase().endsWith('.zip')) : paths;
-            for (const path of items) await this.api(action, { path });
+            for (const path of items) await this.api(action, { path, root: this.activeRoot });
             this.selectedPaths = new Set(); await this.browse(this.currentPath);
         } catch (e) { this.showError(e.message); }
         this.isLoading = false;
     }
     get #hasSelectedZips() { return [...this.selectedPaths].some(p => p.toLowerCase().endsWith('.zip')); }
+
+    // ── View mode (list / grid) ──────────────────────────
+
+    #setViewMode(mode) {
+        if (this.viewMode === mode) return;
+        this.viewMode = mode;
+        try { localStorage.setItem('utpro-fm-view', mode); } catch { /* ignore */ }
+    }
+
+    // Lazy-load grid thumbnails (auth'd blob fetch) only as tiles scroll into view.
+    #ensureThumbObserver() {
+        if (this.#thumbObserver) return this.#thumbObserver;
+        this.#thumbObserver = new IntersectionObserver((entries) => {
+            for (const e of entries) {
+                if (!e.isIntersecting) continue;
+                this.#thumbObserver.unobserve(e.target);
+                this.#loadThumb(e.target);
+            }
+        }, { rootMargin: '150px' });
+        return this.#thumbObserver;
+    }
+
+    async #loadThumb(img) {
+        const path = img?.dataset?.path;
+        if (!path || img.dataset.loaded) return;
+        img.dataset.loaded = '1';
+        // Media Cleanup thumbnails use the public media URL directly (like Umbraco's media editor),
+        // so custom-path / static-served media renders. No auth'd blob fetch needed.
+        if (this.scanMode) { img.src = this.#publicMediaUrl(path); return; }
+        if (this.#thumbs.has(path)) { img.src = this.#thumbs.get(path); return; }
+        try {
+            // Browsed files stream via the authenticated download endpoint (inline).
+            const ep = `${API_BASE}/download?path=${encodeURIComponent(path)}&inline=true${this.#rootQuery()}`;
+            const res = await this.#fetchAuth(ep);
+            if (!res.ok) return;
+            const url = URL.createObjectURL(await res.blob());
+            this.#thumbs.set(path, url);
+            img.src = url;
+        } catch { /* ignore thumbnail failures */ }
+    }
 
     // ── Render ────────────────────────────────────────────
 
@@ -580,7 +697,8 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             ${!viewing ? html`
                 ${this.errorMessage ? html`<div class="error">${this.errorMessage}</div>` : nothing}
                 ${this.isLoading ? html`<div class="center"><uui-loader></uui-loader></div>`
-                    : (this.scanMode && !this.scanFilter ? this._renderScanOverview() : this._renderFileList())}
+                    : (this.#showLocations ? this._renderLocations()
+                        : (this.scanMode && !this.scanFilter ? this._renderScanOverview() : this._renderFileList()))}
             `: nothing}
             ${this.isAdmin ? html`<input type="file" id="fileUpload" multiple style="display:none" @change=${(e) => { if (e.target.files.length) { const f = Array.from(e.target.files); e.target.value = ''; this.uploadFiles(f); } }}>` : nothing}
         </div>`;
@@ -591,22 +709,29 @@ export class UtproFileManagerDashboard extends UmbLitElement {
         const af = this.activeFile;
         // Back is enabled when: a file is open, or (scan) drilled into a category, or (browse) not at root.
         const scanBack = this.scanMode && !!this.scanFilter;
-        const canBack = af || scanBack || (!this.scanMode && this.#canGoBack);
+        // With Locations: at a root's top level, Back returns to the Locations overview.
+        const rootBack = !this.scanMode && this.activeRoot && !this.#canGoBack;
+        const canBack = af || scanBack || (!this.scanMode && this.#canGoBack) || rootBack;
         const back = () => {
             if (af) { this.closeFile(); return; }
             if (scanBack) { this.setScanFilter(null); return; }
             if (this.scanMode) return;
-            this.goBack();
+            if (this.#canGoBack) { this.goBack(); return; }
+            if (this.activeRoot) this.exitRoot();
         };
         return html`<div class="navbar">
             <div class="nav-buttons">
                 <button class="nav-btn ${canBack ? '' : 'disabled'}" ?disabled=${!canBack} @click=${back} title="Back"><uui-icon name="icon-arrow-left"></uui-icon></button>
                 <button class="nav-btn" @click=${() => this.scanMode ? this.runScan(this.scanFilter, true) : window.location.reload()} title="Reload"><uui-icon name="icon-refresh"></uui-icon></button>
-                ${this.mediaMode ? nothing : html`<button class="nav-btn" @click=${() => { this.closeFile(); this.browse(''); }} title="Root"><uui-icon name="icon-home"></uui-icon></button>`}
+                ${this.mediaMode ? nothing : html`<button class="nav-btn" @click=${() => { this.closeFile(); if (this.roots.length) this.exitRoot(); else this.browse(''); }} title=${this.roots.length ? 'Locations' : 'Root'}><uui-icon name="icon-home"></uui-icon></button>`}
             </div>
             <div class="path-bar">
                 ${this.scanMode ? this._renderScanCrumbs() : html`
-                    <span class="path-crumb" @click=${() => { this.closeFile(); this.browse(''); }}>root</span>
+                    ${this.roots.length
+                        ? html`<span class="path-crumb" @click=${() => { this.closeFile(); this.exitRoot(); }}>Locations</span>
+                            <span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span>
+                            <span class="path-crumb" @click=${() => { this.closeFile(); this.browse(''); }}>${this.#activeRootLabel()}</span>`
+                        : html`<span class="path-crumb" @click=${() => { this.closeFile(); this.browse(''); }}>root</span>`}
                     ${parts.map((part, i) => { const p = parts.slice(0, i + 1).join('/'); return html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb" @click=${() => { this.closeFile(); this.browse(p); }}>${part}</span>`; })}
                     ${af ? html`<span class="path-sep"><uui-symbol-expand></uui-symbol-expand></span><span class="path-crumb path-active">${af.name}</span>` : nothing}
                 `}
@@ -614,6 +739,10 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             ${af ? html`<span class="file-meta" style="width:180px;text-align:right">${new Date(af.lastModified).toLocaleString()}</span>`
                 : (this.scanMode ? nothing
                     : html`<input type="text" class="search-input" placeholder="Search..." .value=${this.searchQuery} @input=${(e) => this.#handleSearch(e)}>`)}
+            ${!af && (!this.scanMode || this.scanFilter) ? html`<div class="view-toggle" role="group" aria-label="View mode">
+                <button class="vt-btn ${this.viewMode === 'list' ? 'active' : ''}" @click=${() => this.#setViewMode('list')} title="List view"><uui-icon name="icon-list"></uui-icon></button>
+                <button class="vt-btn ${this.viewMode === 'grid' ? 'active' : ''}" @click=${() => this.#setViewMode('grid')} title="Grid view"><uui-icon name="icon-grid"></uui-icon></button>
+            </div>` : nothing}
         </div>`;
     }
 
@@ -646,6 +775,19 @@ export class UtproFileManagerDashboard extends UmbLitElement {
                         <span class="scan-card-label">${cat.label}</span>
                     </button>`;
                 })}
+            </div>`;
+    }
+
+    /** Locations overview: one card per configured root (like the Media Cleanup overview). */
+    _renderLocations() {
+        if (!this.roots.length) return nothing;
+        return html`
+            <div class="scan-cards">
+                ${this.roots.map(r => html`<button class="scan-card scan-card-info" @click=${() => this.openRoot(r.key)} title=${r.label}>
+                    <uui-icon name=${r.icon || 'icon-folder'}></uui-icon>
+                    <span class="scan-card-label">${r.label}</span>
+                    ${r.adminOnly ? html`<span class="loc-badge">Admin</span>` : nothing}
+                </button>`)}
             </div>`;
     }
 
@@ -682,6 +824,8 @@ export class UtproFileManagerDashboard extends UmbLitElement {
             ? html`<div class="scan-notice">⚠ Scan stopped early (file or time limit reached). Results may be incomplete — increase <code>MediaScanMaxFiles</code> / <code>MediaScanTimeBudgetSeconds</code> or narrow the library.</div>`
             : nothing;
         if (!this.items.length) return html`${truncatedNotice}<div class="empty">${this.scanMode ? 'No items found in this category.' : 'This folder is empty'}</div>`;
+        // Grid view — square tiles with image previews (browse and Media Cleanup categories).
+        if (this.viewMode === 'grid') return html`${truncatedNotice}${this.scanMode ? this._renderScanGrid() : this._renderGrid()}`;
         return html`
             ${truncatedNotice}
             <uui-table aria-label="Files">
@@ -696,6 +840,27 @@ export class UtproFileManagerDashboard extends UmbLitElement {
                 </uui-table-head>
                 ${this.items.map(item => this._renderRow(item))}
             </uui-table>
+            ${this.currentPage < this.totalPages ? html`<div class="load-more">${this.isLoadingMore ? html`<uui-loader></uui-loader>` : html`<uui-button look="primary" @click=${() => this.loadMore()}>Load more (${this.totalItems - this.items.length} remaining)</uui-button>`}</div>` : nothing}`;
+    }
+
+    _renderGrid() {
+        const canOpen = this.isAdmin || this.hasSensitiveData;
+        return html`
+            <div class="fm-grid">
+                ${this.items.map(item => {
+                    const showImg = item.type === 'file' && isImage(item.extension) && canOpen;
+                    const clickable = item.type === 'folder' || (canOpen && (item.isEditable || isMedia(item.extension)));
+                    return html`<div class="grid-tile ${this.selectedPaths.has(item.path) ? 'selected' : ''}">
+                        ${this.isAdmin ? html`<input class="grid-check" type="checkbox" .checked=${this.selectedPaths.has(item.path)} @click=${(e) => e.stopPropagation()} @change=${() => this.#toggleSelect(item.path)}>` : nothing}
+                        <div class="grid-thumb-wrap ${clickable ? 'clickable' : ''}" title=${item.name} @click=${() => this.openItem(item)}>
+                            ${showImg
+                                ? html`<img class="grid-thumb" data-path=${item.path} alt=${item.name}>`
+                                : html`<span class="grid-icon">${getIcon(item)}</span>`}
+                        </div>
+                        <div class="grid-name" title=${item.name}>${item.name}</div>
+                    </div>`;
+                })}
+            </div>
             ${this.currentPage < this.totalPages ? html`<div class="load-more">${this.isLoadingMore ? html`<uui-loader></uui-loader>` : html`<uui-button look="primary" @click=${() => this.loadMore()}>Load more (${this.totalItems - this.items.length} remaining)</uui-button>`}</div>` : nothing}`;
     }
 
@@ -714,6 +879,31 @@ export class UtproFileManagerDashboard extends UmbLitElement {
                 <uui-button look="outline" compact @click=${() => this.deleteItem(item)} color="danger" title="Delete"><uui-icon name="icon-trash"></uui-icon></uui-button>` : nothing}
             </uui-table-cell>
         </uui-table-row>`;
+    }
+
+    _renderScanGrid() {
+        return html`
+            <div class="fm-grid">
+                ${this.items.map(item => {
+                    const isNode = !!item.mediaKey;
+                    const canPreview = !isNode && isMedia(item.extension) && item.path && item.category !== 'broken';
+                    const showImg = isImage(item.extension) && item.path && item.category !== 'broken';
+                    const clickable = isNode || canPreview;
+                    const onClick = () => { if (isNode) this.openMediaNode(item); else if (canPreview) this.previewScanItem(item); };
+                    return html`<div class="grid-tile ${this.#isScanSelected(item) ? 'selected' : ''}">
+                        ${this.hasMediaAccess ? html`<input class="grid-check" type="checkbox" .checked=${this.#isScanSelected(item)} @click=${(e) => e.stopPropagation()} @change=${() => this.#toggleScanSelect(item)}>` : nothing}
+                        <div class="grid-thumb-wrap ${clickable ? 'clickable' : ''}" title=${isNode ? 'Open in Media section' : item.path} @click=${() => clickable && onClick()}>
+                            ${showImg
+                                ? html`<img class="grid-thumb" data-path=${item.path} alt=${item.name}>`
+                                : html`<span class="grid-icon">${getIcon(item)}</span>`}
+                        </div>
+                        <div class="grid-name" title=${item.name}>${item.name}${isNode ? html` <uui-icon name="icon-out" class="name-link-icon"></uui-icon>` : nothing}</div>
+                        ${item.detail || item.category ? html`<div class="grid-meta"><span class="scan-tag scan-tag-${item.category}">${item.detail || item.category}</span></div>` : nothing}
+                        ${this.hasMediaAccess ? html`<div class="grid-actions">${this._renderScanActions(item)}</div>` : nothing}
+                    </div>`;
+                })}
+            </div>
+            ${this.currentPage < this.totalPages ? html`<div class="load-more">${this.isLoadingMore ? html`<uui-loader></uui-loader>` : html`<uui-button look="primary" @click=${() => this.loadMore()}>Load more (${this.totalItems - this.items.length} remaining)</uui-button>`}</div>` : nothing}`;
     }
 
     _renderScanRow(item) {

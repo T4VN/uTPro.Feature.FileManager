@@ -20,10 +20,10 @@ internal class FileManagerService(
 
     // ── Browse ───────────────────────────────────────────
 
-    public BrowseResult Browse(string relativePath, int page = 1, int pageSize = 100, string search = "")
+    public BrowseResult Browse(string relativePath, int page = 1, int pageSize = 100, string search = "", bool webRootScope = false, string? baseRootOverride = null)
     {
         var safePath = SanitizePath(relativePath);
-        var fullPath = GetFullPath(safePath);
+        var fullPath = GetFullPath(safePath, webRootScope, baseRootOverride);
 
         if (!Directory.Exists(fullPath))
             throw new DirectoryNotFoundException($"Directory not found: {safePath}");
@@ -86,11 +86,11 @@ internal class FileManagerService(
 
     // ── File Content ─────────────────────────────────────
 
-    public FileContentResult GetFileContent(string relativePath)
+    public FileContentResult GetFileContent(string relativePath, bool webRootScope = false, string? baseRootOverride = null)
     {
         var safePath = SanitizePath(relativePath);
         ValidateNotBlocked(safePath);
-        var fullPath = GetFullPath(safePath);
+        var fullPath = GetFullPath(safePath, webRootScope, baseRootOverride);
 
         if (!File.Exists(fullPath))
             throw new FileNotFoundException($"File not found: {safePath}");
@@ -108,12 +108,12 @@ internal class FileManagerService(
         };
     }
 
-    public void SaveFileContent(string relativePath, string content)
+    public void SaveFileContent(string relativePath, string content, bool webRootScope = false, string? baseRootOverride = null)
     {
         var safePath = SanitizePath(relativePath);
         ValidateNotBlocked(safePath);
         ValidateWritableExtension(safePath);
-        var fullPath = GetFullPath(safePath);
+        var fullPath = GetFullPath(safePath, webRootScope, baseRootOverride);
 
         if (!File.Exists(fullPath))
             throw new FileNotFoundException($"File not found: {safePath}");
@@ -124,11 +124,11 @@ internal class FileManagerService(
 
     // ── Create / Rename / Delete ─────────────────────────
 
-    public void CreateFolder(string relativePath, string folderName)
+    public void CreateFolder(string relativePath, string folderName, string? baseRootOverride = null)
     {
         var safePath = SanitizePath(relativePath);
         var safeName = SanitizeName(folderName);
-        var fullPath = Path.Combine(GetFullPath(safePath), safeName);
+        var fullPath = Path.Combine(GetFullPath(safePath, baseRootOverride: baseRootOverride), safeName);
 
         if (Directory.Exists(fullPath))
             throw new InvalidOperationException("Folder already exists.");
@@ -137,12 +137,12 @@ internal class FileManagerService(
         logger.LogInformation("Folder created: {Path}/{Name}", safePath, safeName);
     }
 
-    public void CreateFile(string relativePath, string fileName)
+    public void CreateFile(string relativePath, string fileName, string? baseRootOverride = null)
     {
         var safePath = SanitizePath(relativePath);
         var safeName = SanitizeName(fileName);
         ValidateWritableExtension(safeName);
-        var fullPath = Path.Combine(GetFullPath(safePath), safeName);
+        var fullPath = Path.Combine(GetFullPath(safePath, baseRootOverride: baseRootOverride), safeName);
 
         if (File.Exists(fullPath))
             throw new InvalidOperationException("File already exists.");
@@ -151,10 +151,10 @@ internal class FileManagerService(
         logger.LogInformation("File created: {Path}/{Name}", safePath, safeName);
     }
 
-    public async Task ImportFromUrl(string relativePath, string url)
+    public async Task ImportFromUrl(string relativePath, string url, string? baseRootOverride = null)
     {
         var safePath = SanitizePath(relativePath);
-        var fullDir = GetFullPath(safePath);
+        var fullDir = GetFullPath(safePath, baseRootOverride: baseRootOverride);
 
         if (!Directory.Exists(fullDir))
             throw new DirectoryNotFoundException($"Directory not found: {safePath}");
@@ -349,12 +349,12 @@ internal class FileManagerService(
         };
     }
 
-    public void Rename(string relativePath, string newName)
+    public void Rename(string relativePath, string newName, string? baseRootOverride = null)
     {
         var safePath = SanitizePath(relativePath);
         ValidateNotBlocked(safePath);
         var safeName = SanitizeName(newName);
-        var fullPath = GetFullPath(safePath);
+        var fullPath = GetFullPath(safePath, baseRootOverride: baseRootOverride);
         var parentDir = Path.GetDirectoryName(fullPath)!;
         var newFullPath = Path.Combine(parentDir, safeName);
 
@@ -371,11 +371,11 @@ internal class FileManagerService(
         logger.LogInformation("Renamed: {Old} -> {New}", safePath, safeName);
     }
 
-    public void Delete(string relativePath)
+    public void Delete(string relativePath, string? baseRootOverride = null)
     {
         var safePath = SanitizePath(relativePath);
         ValidateNotBlocked(safePath);
-        var fullPath = GetFullPath(safePath);
+        var fullPath = GetFullPath(safePath, baseRootOverride: baseRootOverride);
 
         if (File.Exists(fullPath))
         {
@@ -391,10 +391,10 @@ internal class FileManagerService(
             throw new FileNotFoundException($"Not found: {safePath}");
     }
 
-    public void ExtractZip(string relativePath)
+    public void ExtractZip(string relativePath, string? baseRootOverride = null)
     {
         var safePath = SanitizePath(relativePath);
-        var fullPath = GetFullPath(safePath);
+        var fullPath = GetFullPath(safePath, baseRootOverride: baseRootOverride);
 
         if (!File.Exists(fullPath))
             throw new FileNotFoundException($"File not found: {safePath}");
@@ -409,9 +409,25 @@ internal class FileManagerService(
 
     // ── Helpers ──────────────────────────────────────────
 
-    public string GetFullPath(string relativePath)
+    /// <summary>
+    /// Resolves the base directory a request is confined to. Admins operate against the content
+    /// root (full server); non-admins (<paramref name="webRootScope"/> = true) are confined to the
+    /// host's configured web root (<see cref="IWebHostEnvironment.WebRootPath"/> — e.g.
+    /// uTPro:Hosting:RootPath), which may be an absolute path OUTSIDE the content root.
+    /// </summary>
+    private string ResolveBaseRoot(bool webRootScope, string? baseRootOverride = null)
     {
-        var root = Path.GetFullPath(env.ContentRootPath);
+        // An explicit, already-resolved Locations root always wins.
+        if (!string.IsNullOrEmpty(baseRootOverride))
+            return Path.GetFullPath(baseRootOverride);
+        if (webRootScope && !string.IsNullOrEmpty(env.WebRootPath))
+            return Path.GetFullPath(env.WebRootPath);
+        return Path.GetFullPath(env.ContentRootPath);
+    }
+
+    public string GetFullPath(string relativePath, bool webRootScope = false, string? baseRootOverride = null)
+    {
+        var root = ResolveBaseRoot(webRootScope, baseRootOverride);
         var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar)
             ? root
             : root + Path.DirectorySeparatorChar;

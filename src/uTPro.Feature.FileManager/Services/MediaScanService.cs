@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Umbraco.Cms.Core;
@@ -36,6 +37,7 @@ internal partial class MediaScanService(
     ITrackedReferencesService trackedReferencesService,
     IIdKeyMap idKeyMap,
     IMemoryCache cache,
+    IWebHostEnvironment env,
     Microsoft.Extensions.Options.IOptions<FileManagerOptions> options,
     Microsoft.Extensions.Options.IOptions<Umbraco.Cms.Core.Configuration.Models.ContentSettings> contentSettings,
     ILogger<MediaScanService> logger) : IMediaScanService
@@ -149,6 +151,13 @@ internal partial class MediaScanService(
                 {
                     item.Size = SafeGetSize(fs, rel);
                     sizeCounts[item.Size] = sizeCounts.TryGetValue(item.Size, out var c) ? c + 1 : 1;
+                }
+                else if (FileServedFromDisk(filePath) || FileServedFromDisk(rel))
+                {
+                    // Not in the Umbraco media file system, but the referenced file physically
+                    // exists under the web/content root — e.g. media served as static files from a
+                    // custom URL path (UmbracoMediaPath) that the media file system isn't rooted at.
+                    // It resolves/serves fine, so it is NOT broken (avoids false positives).
                 }
                 else
                 {

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -16,9 +17,13 @@ namespace uTPro.Feature.FileManager.Controllers;
 /// File Manager API — requires Settings section access.
 /// Permissions:
 ///   Admin          → full access, root = ContentRootPath
-///   Settings       → browse wwwroot tree only (no file actions)
-///   + SensitiveData → browse + view/edit/download files in wwwroot
+///   Settings       → browse the site web-root tree only (no file actions)
+///   + SensitiveData → browse + view/edit/download files in the web root
 ///   Write ops (create/rename/delete/upload/extract) → Admin only
+///
+/// The non-admin jail follows the host's configured web root
+/// (<see cref="IWebHostEnvironment.WebRootPath"/> — e.g. uTPro:Hosting:RootPath) rather than a
+/// hardcoded "wwwroot", so it stays correct when the web root is relocated.
 /// </summary>
 [VersionedApiBackOfficeRoute("utpro/file-manager")]
 [ApiExplorerSettings(GroupName = "uTPro File Manager")]
@@ -27,11 +32,10 @@ public class FileManagerApiController(
     IFileManagerService fileManager,
     IMediaScanService mediaScan,
     IBackOfficeSecurityAccessor backOfficeSecurityAccessor,
+    IWebHostEnvironment env,
     IOptions<FileManagerOptions> fileManagerOptions,
     IOptions<Umbraco.Cms.Core.Configuration.Models.ContentSettings> contentSettings) : ManagementApiControllerBase
 {
-    private const string NonAdminRoot = "wwwroot";
-
     // ── Permission helpers ───────────────────────────────
 
     private bool HasGroup(string alias) =>
@@ -53,32 +57,54 @@ public class FileManagerApiController(
     }
 
     /// <summary>
-    /// Admin: path as-is (full server root).
-    /// Non-admin: jailed to wwwroot.
+    /// Sanitises a client-supplied path (strips traversal). The base directory it resolves
+    /// against is chosen by <see cref="WebRootScope"/>: admins get the content root (full server),
+    /// non-admins get the configured web root. Paths are therefore relative to that base for both.
     /// </summary>
-    private string ResolvePath(string? requestPath)
-    {
-        var safe = (requestPath ?? "").Replace('\\', '/').Trim('/').Replace("..", "");
-        if (IsAdmin()) return safe;
-        if (safe.Length == 0) return NonAdminRoot;
-        if (safe.StartsWith(NonAdminRoot, StringComparison.OrdinalIgnoreCase)) return safe;
-        return $"{NonAdminRoot}/{safe}";
-    }
+    private static string ResolvePath(string? requestPath)
+        => (requestPath ?? "").Replace('\\', '/').Trim('/').Replace("..", "");
 
-    private void StripRootPrefix(BrowseResult result)
-    {
-        if (IsAdmin()) return;
-        result.CurrentPath = StripPrefix(result.CurrentPath);
-        result.ParentPath = StripPrefix(result.ParentPath);
-        result.Items = result.Items.Select(i => { i.Path = StripPrefix(i.Path); return i; });
-    }
+    /// <summary>Non-admins are confined to the site web root; admins to the content root.</summary>
+    private bool WebRootScope => !IsAdmin();
 
-    private static string StripPrefix(string path)
+    // ── Locations (multi-root) ───────────────────────────
+
+    /// <summary>Configured "Locations" the current user is allowed to see (empty = default single-root mode).</summary>
+    private IEnumerable<FileManagerRootOption> AllowedRoots =>
+        (fileManagerOptions.Value.Roots ?? [])
+            .Where(r => !string.IsNullOrWhiteSpace(r.Key) && !string.IsNullOrWhiteSpace(r.Path))
+            .Where(r => IsAdmin() || !r.AdminOnly);
+
+    /// <summary>
+    /// Returns the configured Locations for the current user. When none are configured (or none are
+    /// visible), returns an empty array and the UI keeps its default single-root behaviour.
+    /// </summary>
+    [HttpGet("roots")]
+    public IActionResult GetRoots() => Ok(AllowedRoots.Select(r => new
     {
-        if (path.Equals(NonAdminRoot, StringComparison.OrdinalIgnoreCase)) return "";
-        if (path.StartsWith(NonAdminRoot + "/", StringComparison.OrdinalIgnoreCase))
-            return path[(NonAdminRoot.Length + 1)..];
-        return path;
+        key = r.Key,
+        label = string.IsNullOrWhiteSpace(r.Label) ? r.Key : r.Label,
+        icon = string.IsNullOrWhiteSpace(r.Icon) ? "icon-folder" : r.Icon,
+        adminOnly = r.AdminOnly
+    }));
+
+    /// <summary>
+    /// Resolves a client-supplied Locations root key to an absolute base directory, enforcing the
+    /// per-root permission. Returns null when the key is null/empty (default single-root mode).
+    /// Throws <see cref="UnauthorizedAccessException"/> when the key is unknown or not permitted.
+    /// </summary>
+    private string? ResolveRequestedRoot(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return null;
+
+        var root = AllowedRoots.FirstOrDefault(r => r.Key.Equals(key, StringComparison.OrdinalIgnoreCase))
+            ?? throw new UnauthorizedAccessException("Unknown or inaccessible location.");
+
+        // Absolute paths are used as-is; relative paths resolve against the content root.
+        return Path.IsPathRooted(root.Path)
+            ? Path.GetFullPath(root.Path)
+            : Path.GetFullPath(Path.Combine(env.ContentRootPath, root.Path));
     }
 
     // ── Permissions endpoint ─────────────────────────────
@@ -99,8 +125,8 @@ public class FileManagerApiController(
         try
         {
             var resolved = ResolvePath(request.Path);
-            var result = fileManager.Browse(resolved, request.Page, request.PageSize, request.Search);
-            StripRootPrefix(result);
+            var baseRoot = ResolveRequestedRoot(request.Root);
+            var result = fileManager.Browse(resolved, request.Page, request.PageSize, request.Search, WebRootScope, baseRoot);
             return Ok(result);
         }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
@@ -113,12 +139,12 @@ public class FileManagerApiController(
     {
         if (!IsAdmin() && !HasSensitiveData())
             return Unauthorized(new { error = "Sensitive Data access required to view file content." });
-        try { return Ok(fileManager.GetFileContent(ResolvePath(request.Path))); }
+        try { return Ok(fileManager.GetFileContent(ResolvePath(request.Path), WebRootScope, ResolveRequestedRoot(request.Root))); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
     [HttpGet("download")]
-    public IActionResult Download([FromQuery] string path, [FromQuery] bool inline = false)
+    public IActionResult Download([FromQuery] string path, [FromQuery] bool inline = false, [FromQuery] string? root = null)
     {
         if (!IsAdmin() && !HasSensitiveData())
             return Unauthorized(new { error = "Sensitive Data access required to download files." });
@@ -126,7 +152,7 @@ public class FileManagerApiController(
         {
             var resolved = ResolvePath(path);
             fileManager.ValidateNotBlocked(resolved);
-            var fullPath = fileManager.GetFullPath(resolved);
+            var fullPath = fileManager.GetFullPath(resolved, WebRootScope, ResolveRequestedRoot(root));
             if (!System.IO.File.Exists(fullPath))
                 return NotFound(new { error = "File not found." });
             var bytes = System.IO.File.ReadAllBytes(fullPath);
@@ -147,7 +173,7 @@ public class FileManagerApiController(
     {
         if (!IsAdmin() && !HasSensitiveData())
             return Unauthorized(new { error = "Sensitive Data access required to edit files." });
-        try { fileManager.SaveFileContent(ResolvePath(request.Path), request.Content); return Ok(new { success = true }); }
+        try { fileManager.SaveFileContent(ResolvePath(request.Path), request.Content, WebRootScope, ResolveRequestedRoot(request.Root)); return Ok(new { success = true }); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
@@ -265,7 +291,7 @@ public class FileManagerApiController(
     public IActionResult CreateFolder([FromBody] CreateFolderRequest request)
     {
         if (!IsAdmin()) return Unauthorized(new { error = "Admin access required." });
-        try { fileManager.CreateFolder(request.Path, request.Name); return Ok(new { success = true }); }
+        try { fileManager.CreateFolder(request.Path, request.Name, ResolveRequestedRoot(request.Root)); return Ok(new { success = true }); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
@@ -273,7 +299,7 @@ public class FileManagerApiController(
     public IActionResult CreateFile([FromBody] CreateFolderRequest request)
     {
         if (!IsAdmin()) return Unauthorized(new { error = "Admin access required." });
-        try { fileManager.CreateFile(request.Path, request.Name); return Ok(new { success = true }); }
+        try { fileManager.CreateFile(request.Path, request.Name, ResolveRequestedRoot(request.Root)); return Ok(new { success = true }); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
@@ -281,7 +307,7 @@ public class FileManagerApiController(
     public async Task<IActionResult> ImportFromUrl([FromBody] ImportUrlRequest request)
     {
         if (!IsAdmin()) return Unauthorized(new { error = "Admin access required." });
-        try { await fileManager.ImportFromUrl(request.Path, request.Url); return Ok(new { success = true }); }
+        try { await fileManager.ImportFromUrl(request.Path, request.Url, ResolveRequestedRoot(request.Root)); return Ok(new { success = true }); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
@@ -289,7 +315,7 @@ public class FileManagerApiController(
     public IActionResult Rename([FromBody] RenameRequest request)
     {
         if (!IsAdmin()) return Unauthorized(new { error = "Admin access required." });
-        try { fileManager.Rename(request.Path, request.NewName); return Ok(new { success = true }); }
+        try { fileManager.Rename(request.Path, request.NewName, ResolveRequestedRoot(request.Root)); return Ok(new { success = true }); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
@@ -297,19 +323,19 @@ public class FileManagerApiController(
     public IActionResult Delete([FromBody] DeleteRequest request)
     {
         if (!IsAdmin()) return Unauthorized(new { error = "Admin access required." });
-        try { fileManager.Delete(request.Path); return Ok(new { success = true }); }
+        try { fileManager.Delete(request.Path, ResolveRequestedRoot(request.Root)); return Ok(new { success = true }); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
     [HttpPost("upload")]
     [Consumes("multipart/form-data")]
-    public async Task<IActionResult> Upload([FromForm] string path, [FromForm] IFormFile file)
+    public async Task<IActionResult> Upload([FromForm] string path, [FromForm] IFormFile file, [FromForm] string? root = null)
     {
         if (!IsAdmin()) return Unauthorized(new { error = "Admin access required." });
         try
         {
             var safePath = (path ?? "").Replace('\\', '/').Trim('/').Replace("..", "");
-            var fullDir = fileManager.GetFullPath(safePath);
+            var fullDir = fileManager.GetFullPath(safePath, baseRootOverride: ResolveRequestedRoot(root));
             if (!Directory.Exists(fullDir))
                 return BadRequest(new { error = "Directory not found." });
             var safeFileName = Path.GetFileName(file.FileName);
@@ -339,7 +365,7 @@ public class FileManagerApiController(
     public IActionResult ExtractZip([FromBody] FileContentRequest request)
     {
         if (!IsAdmin()) return Unauthorized(new { error = "Admin access required." });
-        try { fileManager.ExtractZip(request.Path); return Ok(new { success = true }); }
+        try { fileManager.ExtractZip(request.Path, ResolveRequestedRoot(request.Root)); return Ok(new { success = true }); }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 

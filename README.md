@@ -114,7 +114,10 @@ No configuration is required — the package ships with safe defaults. To custom
         "MediaScanCacheSeconds": 30,
         "IgnoredMediaIds": [],
         "MediaScanMaxFiles": 50000,
-        "MediaScanTimeBudgetSeconds": 30
+        "MediaScanTimeBudgetSeconds": 30,
+        "Roots": [
+          { "Key": "web", "Label": "Web root", "Path": "wwwroot", "Icon": "icon-globe", "AdminOnly": false }
+        ]
       }
     }
   }
@@ -133,6 +136,7 @@ No configuration is required — the package ships with safe defaults. To custom
 | `MediaLargeFileThresholdMB` | `100` | Media Cleanup: files at or above this size (MB) are reported under the **Large files** category. |
 | `MediaScanCacheSeconds` | `30` | Media Cleanup: how long a scan result is cached so repeated tab switches don't re-scan the whole library. A forced reload or any cleanup action clears the cache. Set to `0` to disable caching. |
 | `IgnoredMediaIds` | `[]` | Media Cleanup: media item IDs to ignore, silencing known false positives in the **Unused** and **Large** categories. |
+| `Roots` | `[]` (single-root mode) | Optional **multi-root "Locations"**. When empty, the File Manager keeps its single-root behaviour (admins → content root, others → web root). When set, it shows a Locations overview with one card per configured root, each browsed as its own confined tree. Each entry has `Key` (stable id), `Label` (card title), `Path` (absolute or relative to the content root), optional `Icon` (Umbraco icon alias), and `AdminOnly` (default `true` — restricts the location to administrators). Path traversal outside each root is still blocked. |
 | `MediaScanMaxFiles` | `50000` | Media Cleanup: scan guardrail — stops a very large scan early once this many files have been examined, with an on-screen notice. |
 | `MediaScanTimeBudgetSeconds` | `30` | Media Cleanup: scan guardrail — stops a scan early once this time budget is exceeded, with an on-screen notice. |
 
@@ -151,6 +155,17 @@ No configuration is required — the package ships with safe defaults. To custom
 The package multi-targets `net9.0` (Umbraco 16) and `net10.0` (Umbraco 17 & 18); a single install picks the right build for your project automatically.
 
 ## Screenshots
+
+### v5.0.0
+
+#### File Manager — browse, edit, upload, preview and manage server files
+![File Manager](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v5.0.0/FileManager-default.png)
+
+#### Grid view — square tiles with image thumbnails (toggle List / Grid)
+![Grid view](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v5.0.0/FileManager-gridview.png)
+
+#### Multi-root "Locations" — a card per configured root (uTPro:Feature:FileManager:Roots)
+![Locations](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v5.0.0/FileManager-configpath.png)
 
 ### v4.0.0 — Two workspace tabs: File Manager & Media Cleanup
 
@@ -226,15 +241,27 @@ src/uTPro.Feature.FileManager/
 
 ## Changelog
 
-### 4.1.0 (security & performance hardening)
+### 5.0.0
+
+> **⚠ Breaking changes — access model tightened.** This release hardens security in ways that change *who can access what*. Review before upgrading: media endpoints now require explicit permissions, the protected-file block list is enforced on view/download (not just modify/delete), server-executable files can no longer be created/written, and SVGs are always downloaded rather than opened inline. No HTTP endpoint contract was removed, but existing users who relied on the previous looser behaviour may see access change.
+
+**New features**
+- **Multi-root "Locations"** — a new optional `uTPro:Feature:FileManager:Roots` config. When empty, the File Manager keeps its single-root behaviour. When one or more roots are configured, it shows a **Locations overview** (one card per root, like Media Cleanup) and each root is browsed as its own confined tree, with a `Locations › [root] › …` breadcrumb. Each root has a `Key`, `Label`, `Path` (absolute or relative to the content root), optional `Icon`, and an `AdminOnly` flag (default `true`) that restricts a location to administrators. Path traversal outside each root is still blocked and all write operations remain admin-only. See [Configuration](#configuration).
+- **List / Grid view modes** in both the **File Manager** and **Media Cleanup** (drilled category) views. A toolbar toggle switches between the classic **List** view and a new **Grid** view of square tiles with **image thumbnails** (checkerboard background for transparency, like the Umbraco media grid). In Media Cleanup, grid tiles also show the status tag and per-item actions. The selected mode is remembered per browser (localStorage), and thumbnails are lazy-loaded only as tiles scroll into view, so large folders/scans stay responsive.
 - **Configurable editable/blocked/dangerous lists** — `EditableExtensions` (replaces the built-in editable set), `AdditionalEditableExtensions` (adds to it), plus two **additive-only security lists**: `AdditionalBlockedNames` and `AdditionalDangerousWriteExtensions` (config can only add protections, never remove a built-in one). See [Configuration](#configuration).
+
+**Security (breaking behavioural changes)**
+- **Authorization added to media endpoints** — `media-file` (preview/stream) now requires **Sensitive Data** and `scan-media` requires **Media access**; previously neither had a per-action check.
 - **Block list enforced on read/download** — protected file names are now blocked on **view** and **download** too (previously only modify/delete), and the built-in list was expanded to include `appsettings.production.json`, `appsettings.staging.json`, and `.env`.
 - **RCE guard on create/save/rename** — writing to a server-executable extension (`.cshtml`, `.razor`, `.aspx`, `.php`, `.exe`, …) is blocked; such files remain viewable/editable but cannot be created or written.
-- **Authorization added to media endpoints** — `media-file` (preview/stream) now requires **Sensitive Data** and `scan-media` requires **Media access**; previously neither had a per-action check.
 - **SVG served as attachment** — SVG files are never served inline, preventing inline-script execution in the backoffice origin.
 - **Per-hop SSRF re-validation on Import via URL** — auto-redirect is disabled and every redirect hop is re-validated so a redirect to an internal address can't bypass the guard; the DNS-based guard now also covers IPv6 (mapped/loopback/ULA) and the full `127.0.0.0/8` range.
+
+**Fixes & performance**
+- The non-admin browse jail now follows the host's configured web root (`IWebHostEnvironment.WebRootPath`, e.g. `uTPro:Hosting:RootPath`) instead of a hardcoded `wwwroot`, so a relocated/renamed web root is honoured.
+- **Media Cleanup — fixed a "Broken media" false positive.** Media served as static files from a custom URL path (for example `UmbracoMediaPath = ~/uploads` served straight from the web root, or a custom `UmbracoMediaPhysicalRootPath`) were incorrectly listed as broken because existence was only checked through the Umbraco media file system. The scan now falls back to checking the referenced file physically under the web/content root before flagging it as broken.
+- **Media Cleanup preview/thumbnails** now use the public media URL (like Umbraco's own media editor), so media served from a custom/static path renders correctly.
 - **MediaScanService performance** — removed N+1 tracked-reference queries via batching, and unique-size files are no longer hashed (duplicate detection only hashes files that share a size).
-- No breaking API changes.
 
 ### 4.0.0
 - **Media Cleanup is now its own workspace tab** next to *File Manager* (no more "Scan Media" button / in-place mode toggle). Switch tabs to move between managing files and cleaning up media.

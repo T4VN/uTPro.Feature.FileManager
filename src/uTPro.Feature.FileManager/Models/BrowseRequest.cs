@@ -6,4 +6,6 @@ public class BrowseRequest
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 100;
     public string Search { get; set; } = "";
+    /// <summary>Optional configured-root key (Locations). Empty = default root for the user.</summary>
+    public string? Root { get; set; }
 }
