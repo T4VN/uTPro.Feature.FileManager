@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using Umbraco.Cms.Api.Common.Attributes;
 using Umbraco.Cms.Api.Management.Controllers;
 using Umbraco.Cms.Api.Management.Routing;
 using Umbraco.Cms.Core;
@@ -26,7 +27,8 @@ namespace uTPro.Feature.FileManager.Controllers;
 /// hardcoded "wwwroot", so it stays correct when the web root is relocated.
 /// </summary>
 [VersionedApiBackOfficeRoute("utpro/file-manager")]
-[ApiExplorerSettings(GroupName = "uTPro File Manager")]
+[MapToApi(ConfigureFileManagerSwaggerGenOptions.ApiName)]
+[ApiExplorerSettings(GroupName = "File Manager")]
 [Authorize(Policy = AuthorizationPolicies.SectionAccessSettings)]
 public class FileManagerApiController(
     IFileManagerService fileManager,
@@ -329,13 +331,17 @@ public class FileManagerApiController(
 
     [HttpPost("upload")]
     [Consumes("multipart/form-data")]
-    public async Task<IActionResult> Upload([FromForm] string path, [FromForm] IFormFile file, [FromForm] string? root = null)
+    public async Task<IActionResult> Upload([FromForm] UploadRequest request)
     {
         if (!IsAdmin()) return Unauthorized(new { error = "Admin access required." });
         try
         {
-            var safePath = (path ?? "").Replace('\\', '/').Trim('/').Replace("..", "");
-            var fullDir = fileManager.GetFullPath(safePath, baseRootOverride: ResolveRequestedRoot(root));
+            var file = request.File;
+            if (file is null || file.Length == 0)
+                return BadRequest(new { error = "No file was uploaded." });
+
+            var safePath = (request.Path ?? "").Replace('\\', '/').Trim('/').Replace("..", "");
+            var fullDir = fileManager.GetFullPath(safePath, baseRootOverride: ResolveRequestedRoot(request.Root));
             if (!Directory.Exists(fullDir))
                 return BadRequest(new { error = "Directory not found." });
             var safeFileName = Path.GetFileName(file.FileName);

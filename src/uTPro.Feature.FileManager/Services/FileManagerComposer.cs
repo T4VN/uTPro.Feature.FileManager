@@ -9,6 +9,9 @@ internal class FileManagerComposer : IComposer
 {
     public void Compose(IUmbracoBuilder builder)
     {
+        // Register a dedicated Swagger document for this feature (its own dropdown entry).
+        builder.Services.ConfigureOptions<ConfigureFileManagerSwaggerGenOptions>();
+
         // Registers IHttpClientFactory (used by ImportFromUrl to avoid socket exhaustion).
         builder.Services.AddHttpClient();
         // Ensures IMemoryCache is available for the Media Cleanup scan cache (idempotent).

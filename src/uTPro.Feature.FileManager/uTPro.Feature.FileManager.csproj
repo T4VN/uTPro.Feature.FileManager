@@ -8,7 +8,7 @@
 
     <PackageId>uTPro.Feature.FileManager</PackageId>
     <Title>uTPro File Manager &amp; Media Cleanup for Umbraco (16, 17, 18)</Title>
-    <Version>5.0.0</Version>
+    <Version>5.0.1</Version>
     <Authors>T4VN</Authors>
     <Company>T4VN</Company>
     <Description>A powerful file management dashboard for the Umbraco backoffice (Umbraco 16, 17, 18). Browse, upload, download, edit with Monaco code editor, preview media, rename, delete, extract ZIP, and import files via URL. Includes a Media Cleanup tool that scans for unused, broken, duplicate, orphaned and large media, plus a Recycle Bin view — with one-click actions to recycle, restore, permanently delete or empty. Role-based access control and zero configuration.</Description>
