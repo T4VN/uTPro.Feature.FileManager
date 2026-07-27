@@ -1,0 +1,72 @@
+{
+  "$schema": "https://marketplace.umbraco.com/umbraco-marketplace-schema.json",
+  "Category": "Developer Tools",
+  "Title": "uTPro File Manager & Media Cleanup",
+  "Description": "A powerful File Manager and Media Cleanup toolkit for the Umbraco 16+ backoffice, on two workspace tabs. File Manager: browse, upload, download, edit (with Monaco code editor), preview media, rename, delete, extract ZIP, and import files via URL. Media Cleanup: an overview of cards per category — Unused, Broken, Duplicate, Orphaned, Large and Disallowed media plus the Recycle Bin — with one-click actions to recycle, restore, permanently delete, empty, or jump straight to the Media node. Features Windows Explorer-style navigation, role-based access control (Admin/Sensitive Data/Media), pagination for large directories, and URL state persistence. Zero configuration required.",
+  "AuthorDetails": {
+    "Name": "T4VN",
+    "Url": "https://t4vn.com",
+    "ImageUrl": "https://github.com/t4vn.png",
+    "SyncContributorsFromRepository": true
+  },
+  "Screenshots": [
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v5.0.0/FileManager-default.png",
+      "Caption": "File Manager — browse, edit, upload, preview and manage server files"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v5.0.0/FileManager-gridview.png",
+      "Caption": "Grid view — square tiles with image thumbnails (toggle List / Grid)"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/v5.0.0/FileManager-configpath.png",
+      "Caption": "Multi-root Locations — a card per configured root"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Admin%20-%20Screenshot%202026-03-31%20122558.png",
+      "Caption": "Admin view — full access to browse, edit, upload, and manage all server files"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Edit%20File%20and%20Action%20File%20-%20Screenshot%202026-03-31%20122905.png",
+      "Caption": "Code editor with syntax highlighting (Monaco) and file actions menu"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Extract%20ZIP%20-%20Screenshot%202026-03-31%20122558.png",
+      "Caption": "Select and extract ZIP files directly in the backoffice"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/Load%20more%20-%20Screenshot%202026-03-31%20122734.png",
+      "Caption": "Paginated loading — handles 2000+ files without UI lag"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/New%20File%20or%20Import%20Url%20-%20Screenshot%202026-03-31%20122823.png",
+      "Caption": "Create new files, folders, or import from URL"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/User%20Not%20Sensitive%20data%20-%20Screenshot%202026-03-31%20123133.png",
+      "Caption": "Non-admin users are restricted to wwwroot only"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/User%20Sensitive%20data%20Edit%20file%20-%20Screenshot%202026-03-31%20123133.png",
+      "Caption": "Sensitive Data role — read-only access to edit and view all files"
+    }
+  ],
+  "LicenseTypes": [
+    "Free"
+  ],
+  "Tags": [
+    "file-manager",
+    "backoffice",
+    "dashboard",
+    "code-editor",
+    "media-preview",
+    "upload",
+    "download",
+    "zip-extract",
+    "media-cleanup"
+  ],
+  "LookingForContributors": true,
+  "PackageType": "Package",
+  "DocumentationUrl": "https://github.com/T4VN/uTPro.Feature.FileManager",
+  "IssueTrackerUrl": "https://github.com/T4VN/uTPro.Feature.FileManager/issues"
+}
