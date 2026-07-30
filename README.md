@@ -199,46 +199,6 @@ The package multi-targets `net9.0` (Umbraco 16) and `net10.0` (Umbraco 17 & 18);
 ### Sensitive Data role — read-only access to edit and view all files
 ![Sensitive Data role](https://raw.githubusercontent.com/T4VN/uTPro.Feature.FileManager/refs/heads/main/Image/User%20Sensitive%20data%20Edit%20file%20-%20Screenshot%202026-03-31%20123133.png)
 
-## Development
-
-```bash
-git clone https://github.com/T4VN/uTPro.Feature.FileManager.git
-cd uTPro.Feature.FileManager
-dotnet run --project src/uTPro.Feature.FileManager.TestSite
-```
-
-Navigate to `https://localhost:54740/umbraco`, log in, go to **Settings → File Manager**.
-
-## Project Structure
-
-```
-src/uTPro.Feature.FileManager/
-├── Controllers/
-│   └── FileManagerApiController.cs    # API endpoints with role-based access
-├── Services/
-│   ├── IFileManagerService.cs         # Service interface
-│   ├── FileManagerService.cs          # File operations implementation
-│   ├── IMediaScanService.cs           # Media Cleanup scan interface
-│   ├── MediaScanService.cs            # Media Cleanup scan implementation
-│   └── FileManagerComposer.cs         # DI registration
-├── Models/
-│   ├── FileItemViewModel.cs           # File/folder view model
-│   ├── FileManagerOptions.cs          # Configurable options (upload limits, large-file threshold, scan cache)
-│   ├── MediaScanItem.cs               # Media Cleanup row view model
-│   ├── MediaScanResult.cs             # Media Cleanup scan result + counts
-│   ├── MediaActionRequest.cs          # Recycle/restore/delete/delete-orphan request
-│   ├── MediaActionResult.cs           # Cleanup action outcome (success + message)
-│   ├── MediaFileContent.cs            # Raw bytes for media preview
-│   └── ...                            # Browse/rename/create/upload request + result DTOs
-└── wwwroot/
-    ├── index.js                       # Main Lit Element dashboard view
-    ├── footer.js                      # Workspace footer app (New/Save/Actions/bulk + item count)
-    ├── context.js                     # Shared workspace context bridging view ↔ footer
-    ├── helpers.js                     # Constants, utilities, icon mapping
-    ├── styles.js                      # CSS styles
-    └── umbraco-package.json           # Umbraco package manifest
-```
-
 ## Changelog
 
 ### 5.0.0
