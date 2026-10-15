@@ -1,5 +1,7 @@
 # uTPro File Manager & Media Cleanup for Umbraco
 
+**Documentation:** <https://docs.utpro.dev/uTPro.Feature.FileManager/>
+
 A powerful **File Manager** and **Media Cleanup** toolkit for the **Umbraco 16+** backoffice, on two workspace tabs. Browse, upload, download, edit, preview, rename and delete server files — and scan the media library to recycle, restore or delete unused, broken, duplicate, orphaned, large and disallowed media, all from within the backoffice.
 
 [![NuGet](https://img.shields.io/nuget/v/uTPro.Feature.FileManager.svg)](https://www.nuget.org/packages/uTPro.Feature.FileManager)
