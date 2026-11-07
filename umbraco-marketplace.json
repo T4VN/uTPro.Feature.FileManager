@@ -2,7 +2,7 @@
   "$schema": "https://marketplace.umbraco.com/umbraco-marketplace-schema.json",
   "Category": "Developer Tools",
   "Title": "uTPro File Manager & Media Cleanup",
-  "Description": "A powerful File Manager and Media Cleanup toolkit for the Umbraco 16+ backoffice, on two workspace tabs. File Manager: browse, upload, download, edit (with Monaco code editor), preview media, rename, delete, extract ZIP, and import files via URL. Media Cleanup: an overview of cards per category — Unused, Broken, Duplicate, Orphaned, Large and Disallowed media plus the Recycle Bin — with one-click actions to recycle, restore, permanently delete, empty, or jump straight to the Media node. Features Windows Explorer-style navigation, role-based access control (Admin/Sensitive Data/Media), pagination for large directories, and URL state persistence. Zero configuration required.",
+  "Description": "A powerful File Manager and Media Cleanup toolkit for the Umbraco 17 and 18 backoffice, on two workspace tabs. File Manager: browse, upload, download, edit (with Monaco code editor), preview media, rename, delete, extract ZIP, and import files via URL. Media Cleanup: an overview of cards per category — Unused, Broken, Duplicate, Orphaned, Large and Disallowed media plus the Recycle Bin — with one-click actions to recycle, restore, permanently delete, empty, or jump straight to the Media node. Features Windows Explorer-style navigation, role-based access control (Admin/Sensitive Data/Media), pagination for large directories, and URL state persistence. Zero configuration required.",
   "AuthorDetails": {
     "Name": "T4VN",
     "Url": "https://t4vn.com",
